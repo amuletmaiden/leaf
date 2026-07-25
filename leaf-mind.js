@@ -5,6 +5,9 @@
    VEILED ASCENSION
    Official change name: Veiled Ascension
 
+   TEMPORAL CONCORD
+   Official change name: Temporal Concord
+
    A goddess does not receive a generic intelligence score. Accumulated law in
    her skirt changes the kind of mind she is capable of. Those stages remain
    entirely internal: no notices, help entries, genealogy labels, or public
@@ -21,6 +24,15 @@
     { name: 'legislation', min: 14 }
   ];
 
+  const worldNow = () => {
+    try { return globalThis.LEAF_PACE ? LEAF_PACE.worldClock() : (typeof tick === 'number' ? tick : 0); }
+    catch (_) { return typeof tick === 'number' ? tick : 0; }
+  };
+  const worldDt = () => {
+    try { return globalThis.LEAF_PACE ? LEAF_PACE.step() : Math.max(0.1, pace); }
+    catch (_) { return 1; }
+  };
+
   function stageFor(goddess) {
     const skirt = Array.isArray(goddess.skirt) ? goddess.skirt.length : 0;
     let stage = 0;
@@ -30,13 +42,7 @@
 
   function ensureMind(goddess) {
     if (!goddess._leafMind || typeof goddess._leafMind !== 'object') {
-      goddess._leafMind = {
-        stage: 0,
-        memories: [],
-        target: null,
-        lawGiven: 0,
-        born: typeof tick === 'number' ? tick : 0
-      };
+      goddess._leafMind = { stage: 0, memories: [], target: null, lawGiven: 0, born: worldNow() };
     }
     if (!Array.isArray(goddess._leafMind.memories)) goddess._leafMind.memories = [];
     return goddess._leafMind;
@@ -57,12 +63,13 @@
       const origin = pTemple();
       const pts = temple && Array.isArray(temple.pts) ? temple.pts : [];
       const stride = Math.max(1, Math.floor(pts.length / 260));
+      const now = worldNow();
       for (let i = 0; i < pts.length; i += stride) {
         const p = pts[i];
         if (!p || p.hermetic) continue;
         const wx = origin[0] + p.x, wy = origin[1] + p.y;
         const key = Math.round(wx / 24) + ':' + Math.round(wy / 24);
-        if (memories && memories.some(m => m.key === key && (typeof tick !== 'number' || tick - m.tick < 1800))) continue;
+        if (memories && memories.some(m => m.key === key && now - m.tick < 1800)) continue;
         const d = (wx - x) ** 2 + (wy - y) ** 2;
         if (d < bestD) { bestD = d; best = { x: wx, y: wy, key }; }
       }
@@ -70,18 +77,19 @@
     return best;
   }
 
-  function drift(goddess, origin, tx, ty, amount) {
+  function drift(goddess, origin, tx, ty, speed) {
     const wx = origin[0] + (goddess.x || 0);
     const wy = origin[1] + (goddess.y || 0);
     const dx = tx - wx, dy = ty - wy;
     const d = Math.hypot(dx, dy) || 1;
+    const amount = Math.min(d, speed * Math.max(0.1, worldDt()));
     goddess.x = (goddess.x || 0) + dx / d * amount;
     goddess.y = (goddess.y || 0) + dy / d * amount;
   }
 
   function rememberContact(mind, point) {
     if (!point) return;
-    const now = typeof tick === 'number' ? tick : 0;
+    const now = worldNow();
     const existing = mind.memories.find(m => m.key === point.key);
     if (existing) existing.tick = now;
     else mind.memories.push({ key: point.key, x: point.x, y: point.y, tick: now });
@@ -89,13 +97,10 @@
   }
 
   function updateGoddess(goddess, index) {
-    if (!goddess || typeof goddess !== 'object') return;
+    if (!goddess || typeof goddess !== 'object' || goddess.kind !== 'goddess') return;
     const mind = ensureMind(goddess);
     const nextStage = stageFor(goddess);
-    if (nextStage !== mind.stage) {
-      mind.stage = nextStage;
-      mind.stageAt = typeof tick === 'number' ? tick : 0;
-    }
+    if (nextStage !== mind.stage) { mind.stage = nextStage; mind.stageAt = worldNow(); }
 
     const [wx, wy, origin] = worldPosition(goddess);
 
@@ -116,12 +121,12 @@
         const tx = love.x + vx * ahead + Math.cos(love.gazeA || 0) * 26;
         const ty = love.y + vy * ahead + Math.sin(love.gazeA || 0) * 26;
         drift(goddess, origin, tx, ty, 0.008 + mind.stage * 0.003);
-        mind.anticipated = { x: tx, y: ty, tick: typeof tick === 'number' ? tick : 0 };
+        mind.anticipated = { x: tx, y: ty, tick: worldNow() };
       } catch (_) {}
     }
 
     if (mind.stage >= 4 && globalThis.LEAF_LAW) {
-      const now = typeof tick === 'number' ? tick : 0;
+      const now = worldNow();
       if (!mind.nextLegislation || now >= mind.nextLegislation) {
         LEAF_LAW.addLegislator({
           x: wx,
@@ -142,11 +147,12 @@
     } catch (_) {}
   }
 
+  const ancestralFrame = frame;
+  frame = function () { ancestralFrame(); update(); };
+
   globalThis.LEAF_MIND = {
     officialName: 'Legislative Ladder',
-    veilName: 'Veiled Ascension'
+    veilName: 'Veiled Ascension',
+    temporalName: 'Temporal Concord'
   };
-
-  setInterval(update, 180);
-  setTimeout(update, 600);
 })();
