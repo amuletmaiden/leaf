@@ -1,12 +1,13 @@
 /* Leaf service worker: network first, local fallback.
    Integration Bridge injects named simulation systems into world pages and the
-   Living Ledger enhancement into Council Ledger. */
+   Living Ledger enhancements into Council Ledger. */
 
-const CACHE = 'leaf-v14';
+const CACHE = 'leaf-v15';
 const SHELL = [
   './index.html',
   './council.html',
   './council-live.js',
+  './council-ecology.js',
   './leaf-hearth.js',
   './leaf-slots.js',
   './leaf-genealogy.js',
@@ -34,6 +35,7 @@ const NAMED_SYSTEMS = `<!-- LEAF NAMED SYSTEMS -->
 <!-- /LEAF NAMED SYSTEMS -->`;
 const COUNCIL_SYSTEM = `<!-- LEAF COUNCIL SYSTEM -->
 <script src="council-live.js"></script>
+<script src="council-ecology.js"></script>
 <!-- /LEAF COUNCIL SYSTEM -->`;
 
 async function installNamedSystems(response) {
