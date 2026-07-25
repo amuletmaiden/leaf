@@ -32,9 +32,11 @@
   }
 
   function kata() {
-    return Array.from(arguments).map(part =>
-      '<span style="color:' + part[1] + '">' + part[0] + '</span>'
-    ).join('');
+    return Array.from(arguments).map(part => {
+      const isGold = String(part[1]).toLowerCase() === K.gold;
+      const glow = isGold ? ';text-shadow:0 0 2px #fff,0 0 7px #ffff00' : '';
+      return '<span style="color:' + part[1] + glow + '">' + part[0] + '</span>';
+    }).join('');
   }
 
   function closeTerminal() {
@@ -76,6 +78,8 @@
     helpBox.style.gridTemplateRows = 'repeat(10,auto)';
     helpBox.style.columnGap = '28px';
     helpBox.style.lineHeight = '1.9';
+    helpBox.style.opacity = '1';
+    helpBox.style.filter = 'none';
   }
 
   function say(text) {
@@ -99,7 +103,7 @@
     run(arg) { if (globalThis.LEAF_SLOTS) LEAF_SLOTS.load(arg); }
   });
   add({
-    word: 'pace', aliases: ['p', 'speed'], kata: kata(['pace', K.green]),
+    word: 'pace', aliases: ['p', 'speed'], kata: kata(['pace', K.pink]),
     run(arg) {
       if (!arg) return say('pace ' + pace);
       const n = Number(arg);
