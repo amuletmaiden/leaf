@@ -1,17 +1,19 @@
 /* Leaf service worker: network first, local fallback.
-   The temporary Integration Bridge injects named simulation systems only into
-   Leaf's world pages. Ordinary companion pages such as Council Ledger are
-   served untouched. */
+   Integration Bridge injects named simulation systems into world pages and the
+   Living Ledger enhancement into Council Ledger. */
 
-const CACHE = 'leaf-v12';
+const CACHE = 'leaf-v13';
 const SHELL = [
   './index.html',
   './council.html',
+  './council-live.js',
   './leaf-hearth.js',
   './leaf-slots.js',
   './leaf-genealogy.js',
   './leaf-law.js',
   './leaf-mind.js',
+  './leaf-round-horizon.js',
+  './leaf-jurisprudential-drift.js',
   './leaf-star-temperance.js',
   './leaf-crown.js',
   './leaf-veil.js'
@@ -22,10 +24,15 @@ const NAMED_SYSTEMS = `<!-- LEAF NAMED SYSTEMS -->
 <script src="leaf-genealogy.js"></script>
 <script src="leaf-law.js"></script>
 <script src="leaf-mind.js"></script>
+<script src="leaf-round-horizon.js"></script>
+<script src="leaf-jurisprudential-drift.js"></script>
 <script src="leaf-star-temperance.js"></script>
 <script src="leaf-crown.js"></script>
 <script src="leaf-veil.js"></script>
 <!-- /LEAF NAMED SYSTEMS -->`;
+const COUNCIL_SYSTEM = `<!-- LEAF COUNCIL SYSTEM -->
+<script src="council-live.js"></script>
+<!-- /LEAF COUNCIL SYSTEM -->`;
 
 async function installNamedSystems(response) {
   if (!response || !response.ok) return response;
@@ -34,9 +41,13 @@ async function installNamedSystems(response) {
 
   const text = await response.text();
   const isWorld = text.includes('<canvas id="world"') || text.includes("<canvas id='world'");
-  const patched = !isWorld || text.includes('<!-- LEAF NAMED SYSTEMS -->')
-    ? text
-    : text.replace('</body>', NAMED_SYSTEMS + '\n</body>');
+  const isCouncil = text.includes('<title>leaf council</title>');
+  let patched = text;
+
+  if (isWorld && !patched.includes('<!-- LEAF NAMED SYSTEMS -->'))
+    patched = patched.replace('</body>', NAMED_SYSTEMS + '\n</body>');
+  else if (isCouncil && !patched.includes('<!-- LEAF COUNCIL SYSTEM -->'))
+    patched = patched.replace('</body>', COUNCIL_SYSTEM + '\n</body>');
 
   const headers = new Headers(response.headers);
   headers.delete('content-length');
