@@ -1,0 +1,115 @@
+name: Install named Leaf systems
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/install-named-systems.yml
+
+permissions:
+  contents: write
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Syntax-check named systems
+        run: |
+          node --check leaf-hearth.js
+          node --check leaf-genealogy.js
+          node --check leaf-law.js
+          node --check leaf-mind.js
+          node --check leaf-crown.js
+
+      - name: Install scripts in canonical pages
+        shell: python
+        run: |
+          from pathlib import Path
+
+          marker = '<!-- LEAF NAMED SYSTEMS -->'
+          block = '''<!-- LEAF NAMED SYSTEMS -->
+          <script src="leaf-hearth.js"></script>
+          <script src="leaf-genealogy.js"></script>
+          <script src="leaf-law.js"></script>
+          <script src="leaf-mind.js"></script>
+          <script src="leaf-crown.js"></script>
+          <!-- /LEAF NAMED SYSTEMS -->'''
+
+          for filename in ('index.html', 'leaf_6.html'):
+              path = Path(filename)
+              text = path.read_text(encoding='utf-8')
+              if marker not in text:
+                  if '</body>' not in text:
+                      raise SystemExit(f'{filename}: no closing body tag')
+                  text = text.replace('</body>', block + '\n</body>', 1)
+                  path.write_text(text, encoding='utf-8')
+
+      - name: Restore service worker to caching only
+        shell: bash
+        run: |
+          cat > sw.js <<'EOF'
+          /* Leaf service worker: network first, local fallback, no source rewriting. */
+          const CACHE = 'leaf-v7';
+          const SHELL = [
+            './', './index.html', './manifest.json', './icon.svg',
+            './leaf-hearth.js', './leaf-genealogy.js', './leaf-law.js',
+            './leaf-mind.js', './leaf-crown.js'
+          ];
+
+          self.addEventListener('install', (event) => {
+            event.waitUntil((async () => {
+              const cache = await caches.open(CACHE);
+              await Promise.all(SHELL.map(async (url) => {
+                try { await cache.add(url); } catch (_) {}
+              }));
+              await self.skipWaiting();
+            })());
+          });
+
+          self.addEventListener('activate', (event) => {
+            event.waitUntil((async () => {
+              const names = await caches.keys();
+              await Promise.all(names.filter((name) => name !== CACHE).map((name) => caches.delete(name)));
+              await self.clients.claim();
+            })());
+          });
+
+          self.addEventListener('fetch', (event) => {
+            const request = event.request;
+            if (request.method !== 'GET') return;
+            const url = new URL(request.url);
+            if (url.origin !== self.location.origin) return;
+
+            event.respondWith((async () => {
+              try {
+                const fresh = await fetch(request);
+                if (fresh && fresh.ok && fresh.type !== 'opaque') {
+                  const clone = fresh.clone();
+                  caches.open(CACHE).then((cache) => cache.put(request, clone)).catch(() => {});
+                }
+                return fresh;
+              } catch (error) {
+                const hit = await caches.match(request);
+                if (hit) return hit;
+                if (request.mode === 'navigate') {
+                  const shell = await caches.match('./index.html') || await caches.match('./');
+                  if (shell) return shell;
+                }
+                throw error;
+              }
+            })());
+          });
+          EOF
+
+      - name: Commit installation and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/install-named-systems.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html leaf_6.html sw.js .github/workflows/install-named-systems.yml
+          git commit -m "[Integration Gate] activate named Leaf systems"
+          git push
