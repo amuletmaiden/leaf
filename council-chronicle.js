@@ -78,6 +78,29 @@
     strip.appendChild(cell);
   }
 
+  const chronicleInventory = ['chronicle','CHRONICLE LOOM','consequential records and visual memory plates'];
+  if (!inventory.some(item => item[0] === 'chronicle')) inventory.push(chronicleInventory);
+  const chronicleCard = (() => {
+    const s = bind('chronicle','inventory'), card = document.createElement('div');
+    card.className = 'card'; card.dataset.element = 'chronicle'; card.dataset.open = '0';
+    const c = document.createElement('canvas'), body = document.createElement('div');
+    const badge = document.createElement('div'); badge.className = 'live-badge'; badge.id = 'chronicleInventoryBadge'; badge.textContent = '0 records';
+    const title = document.createElement('h3'); title.textContent = chronicleInventory[1];
+    const meta = document.createElement('div'); meta.className = 'meta'; meta.textContent = chronicleInventory[2];
+    const ta = document.createElement('textarea'); ta.placeholder = 'notes'; ta.value = s.note; ta.oninput = () => s.setNote(ta.value);
+    const label = document.createElement('label'), check = document.createElement('input'); check.type = 'checkbox'; check.checked = s.done; check.onchange = () => s.setDone(check.checked);
+    label.append(check,document.createTextNode('reviewed')); body.append(badge,title,meta,ta,label); card.append(c,body);
+    card.onclick = e => { if (!e.target.matches('textarea,input,label')) card.dataset.open = card.dataset.open === '1' ? '0' : '1'; };
+    document.getElementById('inventoryGrid').appendChild(card); return card;
+  })();
+
+  const workGrid = document.querySelector('#work .work-grid');
+  if (workGrid) {
+    const item = document.createElement('article'); item.className = 'work-item';
+    item.innerHTML = '<div class="state">ACTIVE RECORD</div><h3>Chronicle Loom</h3><p>Consequences are preserved as world-time records and selected visual plates, then rendered as an archive rather than announced in the world.</p>';
+    workGrid.prepend(item);
+  }
+
   function readChronicle() {
     try {
       chronicle = JSON.parse(localStorage.getItem(KEY) || '{}') || {};
@@ -110,6 +133,23 @@
     }
   }
 
+  function drawChronicleIcon() {
+    const canvas = chronicleCard.querySelector('canvas'), x = canvas.getContext('2d');
+    canvas.width = 188; canvas.height = 188; x.fillStyle = '#000'; x.fillRect(0,0,188,188);
+    const events = (chronicle.events || []).slice(-36), lanes = 4;
+    x.lineWidth = 1;
+    for (let lane=0; lane<lanes; lane++) {
+      const y = 42 + lane*34; x.strokeStyle = 'rgba(70,100,112,.24)'; x.beginPath(); x.moveTo(20,y); x.lineTo(168,y); x.stroke();
+    }
+    events.forEach((e,i) => {
+      const px = 24 + (events.length > 1 ? i/(events.length-1) : .5)*140;
+      const y = 42 + (i%lanes)*34, r = 1.8 + (e.importance || 1)*.7;
+      x.shadowColor = e.color || '#7a8496'; x.shadowBlur = 8; x.fillStyle = e.color || '#7a8496';
+      x.beginPath(); x.arc(px,y,r,0,Math.PI*2); x.fill(); x.shadowBlur = 0;
+    });
+    x.fillStyle = '#60727c'; x.font = '9px "Courier New",monospace'; x.fillText('WORLD / RECORD',20,174);
+  }
+
   function renderSummary() {
     const events = chronicle.events || [];
     const seeds = new Set(events.map(e => e.seed).filter(Boolean));
@@ -125,6 +165,9 @@
     ];
     document.getElementById('chronicleSummary').innerHTML = data.map(([v,l]) => '<div class="chronicle-stat"><b>' + v + '</b><span>' + l + '</span></div>').join('');
     const count = document.getElementById('worldChronicle'); if (count) count.textContent = events.length.toLocaleString('en-US');
+    const badge = document.getElementById('chronicleInventoryBadge');
+    if (badge) { badge.textContent = events.length.toLocaleString('en-US') + ' records'; badge.classList.toggle('present', events.length > 0); }
+    drawChronicleIcon();
   }
 
   function seedLanes(events) {
@@ -254,8 +297,9 @@
   function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
   addEventListener('resize', drawTimeline);
-  addEventListener('storage', e => { if (e.key === KEY) render(); });
+  addEventListener('storage', e => { if (e.key === KEY) { render(); renderPlates(); } });
   setInterval(render, 15000);
+  setInterval(renderPlates, 30000);
   render(); renderPlates();
 
   const ancestralLedger = ledger;
