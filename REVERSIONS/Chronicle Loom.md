@@ -45,11 +45,12 @@ A narrow revert disables plate capture and removes the plates panel from Council
 **Primary commits:**
 
 - `926f1df3a990e7baaf98a383ddf3de5fedba4d42` — Council Ledger visualization
+- `3111ad46304bad4f491bfdaf00110e6084fe7f7a` — active inventory card and live plate refresh
 - `82c50ccca7d2f3cd19fe1cae20507e25ca142767` — Integration Bridge
 
 **File:** `council-chronicle.js`
 
-Renders Chronicle Loom as filterable seed-lanes, colored event points, hover details, recent-record lists, archive statistics, and Memory Plates. Chronicle summaries and recent major passages are included when Council Ledger is copied or dispatched.
+Renders Chronicle Loom as filterable seed-lanes, colored event points, hover details, recent-record lists, archive statistics, Memory Plates, and an active inventory card. Chronicle summaries and recent major passages are included when Council Ledger is copied or dispatched.
 
 Revert phrase: `revert Archive Constellation`
 
