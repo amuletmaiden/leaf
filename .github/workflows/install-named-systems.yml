@@ -3,11 +3,14 @@ name: Install named Leaf systems
 on:
   push:
     branches: [main]
-    paths:
-      - .github/workflows/install-named-systems.yml
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: leaf-named-systems
+  cancel-in-progress: false
 
 jobs:
   install:
