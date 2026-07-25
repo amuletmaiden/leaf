@@ -1,16 +1,19 @@
-/* ==========================================================================
+/* ========================================================================== 
    LAW OF CONTAGION
    Official change name: Law of Contagion
 
    DORMANT SIGILS
    Official change name: Dormant Sigils
 
+   CHORUS OF PRECEDENT
+   Official change name: Chorus of Precedent
+
    SILENT DOCTRINE
    Official change name: Silent Doctrine
 
    Temple is no longer only a place. Lawfulness is a local scalar that leaks
    from settled law, ice, and legislating goddesses. Things inside the field
-   begin to snap, repeat, and move on a beat instead of by pure drift.
+   begin to snap, repeat, share phase, and move on a beat instead of pure drift.
 
    The diagnostic square marks are hidden by default and have no public
    command. The single word `law` wakes or sleeps the field itself, silently.
@@ -91,6 +94,13 @@
     return Math.max(0, Math.min(1, total));
   }
 
+  function angleDifference(a, b) {
+    let d = b - a;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
+
   function infectObject(object, x, y, write, options) {
     if (!object || !Number.isFinite(x) || !Number.isFinite(y)) return 0;
     const law = lawfulnessAt(x, y);
@@ -107,9 +117,31 @@
     }
 
     const period = law > 0.72 ? 24 : law > 0.45 ? 40 : 64;
-    const phase = ((typeof tick === 'number' ? tick : frame) + (object._leafLawPhase || 0)) % period;
-    if (!object._leafLawPhase) object._leafLawPhase = Math.floor(Math.random() * period);
-    if (phase > Math.max(1, typeof pace === 'number' ? pace : 1)) return law;
+    if (object._leafLawPhase == null) object._leafLawPhase = Math.floor(Math.random() * period);
+    const clock = typeof tick === 'number' ? tick : frame;
+    const phase = (clock + object._leafLawPhase) % period;
+    const open = phase <= Math.max(1, typeof pace === 'number' ? Math.sqrt(Math.max(1, pace)) : 1);
+    object._leafLawBeat = phase / period;
+
+    /* Chorus of Precedent: visible bodies near the same law begin to share a
+       pulse. This changes no colour and draws no diagnostic sign; the initiate
+       reads law from many independent lights becoming one rhythm. */
+    if (Number.isFinite(object.ph)) {
+      const canonical = (clock % period) / period * Math.PI * 2;
+      object.ph += angleDifference(object.ph, canonical) * (0.004 + law * 0.016);
+    }
+
+    if (!open) {
+      /* Between permitted beats, velocity is not erased. It is held. Stronger
+         law means a deeper collective hesitation; the release remains real
+         because momentum is preserved rather than replaced. */
+      if (options && options.velocity && Number.isFinite(object.vx) && Number.isFinite(object.vy)) {
+        const hold = 1 - (0.008 + law * 0.032);
+        object.vx *= hold;
+        object.vy *= hold;
+      }
+      return law;
+    }
 
     const grid = law > 0.72 ? 8 : law > 0.45 ? 12 : 18;
     const pull = 0.08 + law * 0.17;
@@ -124,8 +156,9 @@
         const a = Math.atan2(object.vy, object.vx);
         const qa = Math.round(a / (Math.PI * 2 / steps)) * (Math.PI * 2 / steps);
         const blend = 0.10 + law * 0.16;
-        object.vx += (Math.cos(qa) * speed - object.vx) * blend;
-        object.vy += (Math.sin(qa) * speed - object.vy) * blend;
+        const release = 1 + law * 0.012;
+        object.vx = (object.vx + (Math.cos(qa) * speed - object.vx) * blend) * release;
+        object.vy = (object.vy + (Math.sin(qa) * speed - object.vy) * blend) * release;
       }
     }
     return law;
@@ -224,6 +257,7 @@
   globalThis.LEAF_LAW = {
     officialName: 'Law of Contagion',
     visualChangeName: 'Dormant Sigils',
+    chorusName: 'Chorus of Precedent',
     doctrineName: 'Silent Doctrine',
     lawfulnessAt,
     addLegislator,
