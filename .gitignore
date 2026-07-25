@@ -3,7 +3,10 @@
 # unless it is explicitly re-enabled below.
 *
 
-# Public:
+# Public (site + PWA):
 !.gitignore
 !index.html
 !leaf_*.html
+!manifest.json
+!sw.js
+!icon.svg

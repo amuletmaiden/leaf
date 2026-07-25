@@ -10,6 +10,10 @@ html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;font-fa
 #title{position:fixed;top:12px;left:16px;font-size:11px;color:#3a3a3a;letter-spacing:2px;pointer-events:none}
 #tally{position:fixed;top:12px;right:16px;font-size:11px;color:#555;text-align:right;line-height:1.7;pointer-events:none}
 </style>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#000000">
+<link rel="apple-touch-icon" href="icon.svg">
 </head>
 <body>
 <canvas id="world" width="1280" height="720"></canvas>
@@ -3491,4 +3495,25 @@ rafId=requestAnimationFrame(runFrame);
 </script>
 
 
+
+<script>
+/* leaf PWA hooks -- installed at publish time, not part of the leaf source. */
+(function () {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(function () {});
+    });
+  }
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(function () {});
+    var ask = function () {
+      navigator.storage.persist().catch(function () {});
+      window.removeEventListener('pointerdown', ask, true);
+      window.removeEventListener('keydown', ask, true);
+    };
+    window.addEventListener('pointerdown', ask, true);
+    window.addEventListener('keydown', ask, true);
+  }
+})();
+</script>
 </body></html>
