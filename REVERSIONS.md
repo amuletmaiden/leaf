@@ -62,6 +62,16 @@ Adds local lawfulness fields. Matter in lawful regions begins snapping to grids,
 
 Revert phrase: `revert Law of Contagion`
 
+## Jurisprudential Drift
+
+**Commit:** `0abd41c2e7c0c421bbee107d860fb68933631bf4`
+
+**File:** `leaf-jurisprudential-drift.js`
+
+Replaces law's arbitrary two-sine orbit. The law origin is recentered on its settled body, and the body drifts toward the shared barycentre of Heart, Love, Power, stars, and what law has kept. Accumulated law supplies inertia, so established law becomes progressively harder to move. The drift state is included in saves.
+
+Revert phrase: `revert Jurisprudential Drift`
+
 ## Dormant Sigils
 
 **Commit:** `12da9d9a68102f96bf15ff78a76b9070094e8fc5`
@@ -112,6 +122,16 @@ Spells Zettaitsune as the syllable-true GREEN · BLUE · GREEN sequence `zet / t
 
 Revert phrase: `revert Zettaitsune Trine`
 
+## Round Horizon
+
+**Commit:** `edde7d24009b21fb99ae1fabc82e12e889b57249`
+
+**File:** `leaf-round-horizon.js`
+
+Keeps one logical world rectangle for a loaded world and presents it with a single uniform scale. Window and fullscreen changes can reframe the cosmos but cannot squeeze circles into ovals. Extra aspect-ratio space remains black sky.
+
+Revert phrase: `revert Round Horizon`
+
 ## Council Ledger
 
 **Commit:** `55b1c29aa64488874ad128c9d66b82d2616615c4`
@@ -122,15 +142,25 @@ Adds a companion page containing open questions, proposed improvements, and a re
 
 Revert phrase: `revert Council Ledger`
 
+## Living Ledger
+
+**Commit:** `75ffe6c7e079eae45bb25daff706b5f836dc5901`
+
+**File:** `council-live.js`
+
+Makes Council Ledger active. Inventory miniatures animate only while visible, cards report counts or presence from the latest local world, questions can be held or resolved, and a law audit records notes on every proposition governing law. The page also tracks active work and includes its notes in dispatch.
+
+Revert phrase: `revert Living Ledger`
+
 ## Lexicon Crown
 
 **Original commit:** `d6460064662e9ea67158045e82122c8bbdcc286b`
 
-**Current command-polish commit:** `52ac357aab9cc18b0ffcb54f14b015adda68c27c`
+**Current command-polish commit:** `eed1b2275d5ff661f624d83e5551924fa3d42793`
 
 **Current file:** `leaf-crown.js`
 
-Provides one declarative command registry for command words, aliases, syllable-coloured help, and execution. It owns the corrected backtick and Escape behaviour. The current litany uses `h`, omits the defunct `keep`, renders `load` green, and uses brightest yellow.
+Provides one declarative command registry for command words, aliases, syllable-coloured help, and execution. It owns the corrected backtick and Escape behaviour. The current litany uses `h`, omits the defunct `keep`, renders `load` green and `pace` pink, removes the ancestral panel opacity, and gives brightest yellow a white-hot glow.
 
 Revert phrase: `revert Lexicon Crown`
 
@@ -146,11 +176,11 @@ Revert phrase: `revert Silent Doctrine`
 
 ## Integration Bridge
 
-**Current commit:** `c7791b155d77360c885c847bf8bc3804fbe09058`
+**Current commit:** `166c144f433d214fa547783259077f6b10549276`
 
 **File:** `sw.js`
 
-Loads the named simulation systems into actual Leaf world pages while leaving companion pages such as Council Ledger untouched. It claims and reloads a first-time page once so a visitor is not asked to understand or manually refresh a service worker.
+Loads the named simulation systems into Leaf world pages and Living Ledger into the council page. It claims and reloads a first-time page once so a visitor is not asked to understand or manually refresh a service worker.
 
 Revert phrase: `revert Integration Bridge`
 
