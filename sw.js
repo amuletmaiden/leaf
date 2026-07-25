@@ -3,9 +3,10 @@
    until the canonical pages contain their script tags directly. It does not
    rewrite Leaf's source logic. */
 
-const CACHE = 'leaf-v9';
+const CACHE = 'leaf-v10';
 const SHELL = [
   './leaf-hearth.js',
+  './leaf-slots.js',
   './leaf-genealogy.js',
   './leaf-law.js',
   './leaf-mind.js',
@@ -13,6 +14,7 @@ const SHELL = [
 ];
 const NAMED_SYSTEMS = `<!-- LEAF NAMED SYSTEMS -->
 <script src="leaf-hearth.js"></script>
+<script src="leaf-slots.js"></script>
 <script src="leaf-genealogy.js"></script>
 <script src="leaf-law.js"></script>
 <script src="leaf-mind.js"></script>
@@ -54,9 +56,6 @@ self.addEventListener('activate', (event) => {
     await Promise.all(names.filter((name) => name !== CACHE).map((name) => caches.delete(name)));
     await self.clients.claim();
 
-    /* A first-time visitor loaded the ancestral page before this worker gained
-       control. Reload that page exactly once, at activation, so the named
-       systems appear without asking the visitor to understand service workers. */
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     await Promise.all(windows.map(async (client) => {
       try {
