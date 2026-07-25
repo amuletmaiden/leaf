@@ -92,13 +92,45 @@ Removes all visible goddess-stage announcements, the `mind` command and help ent
 
 Revert phrase: `revert Veiled Ascension`
 
+## Star Temperance
+
+**Commit:** `a5f5598f2cfe324a0d2316087a7405a305142bcf`
+
+**File:** `leaf-star-temperance.js`
+
+Makes newly born extreme stars markedly rarer and lowers the stellar maximum slightly. Existing stars and saved history are not rewritten.
+
+Revert phrase: `revert Star Temperance`
+
+## Zettaitsune Trine
+
+**Commits:** `a5f5598f2cfe324a0d2316087a7405a305142bcf`, `52ac357aab9cc18b0ffcb54f14b015adda68c27c`
+
+**Files:** `leaf-star-temperance.js`, `leaf-crown.js`
+
+Spells Zettaitsune as the syllable-true GREEN · BLUE · GREEN sequence `zet / tai / tsune` in both the world readout and the help litany.
+
+Revert phrase: `revert Zettaitsune Trine`
+
+## Council Ledger
+
+**Commit:** `55b1c29aa64488874ad128c9d66b82d2616615c4`
+
+**File:** `council.html`
+
+Adds a companion page containing open questions, proposed improvements, and a rendered inventory of Leaf. Checks and notes remain browser-local until Katherine explicitly dispatches them into a private `kt-bus` GitHub issue draft.
+
+Revert phrase: `revert Council Ledger`
+
 ## Lexicon Crown
 
 **Original commit:** `d6460064662e9ea67158045e82122c8bbdcc286b`
 
+**Current command-polish commit:** `52ac357aab9cc18b0ffcb54f14b015adda68c27c`
+
 **Current file:** `leaf-crown.js`
 
-Provides one declarative command registry for command words, aliases, syllable-coloured help, and execution. It also owns the corrected backtick and Escape behaviour.
+Provides one declarative command registry for command words, aliases, syllable-coloured help, and execution. It owns the corrected backtick and Escape behaviour. The current litany uses `h`, omits the defunct `keep`, renders `load` green, and uses brightest yellow.
 
 Revert phrase: `revert Lexicon Crown`
 
@@ -114,11 +146,11 @@ Revert phrase: `revert Silent Doctrine`
 
 ## Integration Bridge
 
-**Current commit:** `c3da23badc5ba56c843c88682a78b8eb1c2538e3`
+**Current commit:** `c7791b155d77360c885c847bf8bc3804fbe09058`
 
 **File:** `sw.js`
 
-Loads the named systems into served HTML pages while keeping their logic in separate files, including Pocket Worlds and Veiled Ascension. It claims and reloads a first-time page once so a visitor is not asked to understand or manually refresh a service worker. This is plumbing, not a metaphysical feature. Reverting any named feature should remove its script from the bridge as well as reverting its own file.
+Loads the named simulation systems into actual Leaf world pages while leaving companion pages such as Council Ledger untouched. It claims and reloads a first-time page once so a visitor is not asked to understand or manually refresh a service worker.
 
 Revert phrase: `revert Integration Bridge`
 
