@@ -8,7 +8,7 @@
 const CACHE = 'leaf-v2';
 const BACKTICK_HELP_FIX = `<script data-leaf-backtick-help-fix>
 addEventListener('keydown', function (event) {
-  if (event.key === \"`\" && typeof hideHelp === 'function') hideHelp();
+  if (event.code === 'Backquote' && typeof hideHelp === 'function') hideHelp();
 }, true);
 <\/script>`;
 
