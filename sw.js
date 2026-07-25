@@ -3,14 +3,15 @@
    until the canonical pages contain their script tags directly. It does not
    rewrite Leaf's source logic. */
 
-const CACHE = 'leaf-v10';
+const CACHE = 'leaf-v11';
 const SHELL = [
   './leaf-hearth.js',
   './leaf-slots.js',
   './leaf-genealogy.js',
   './leaf-law.js',
   './leaf-mind.js',
-  './leaf-crown.js'
+  './leaf-crown.js',
+  './leaf-veil.js'
 ];
 const NAMED_SYSTEMS = `<!-- LEAF NAMED SYSTEMS -->
 <script src="leaf-hearth.js"></script>
@@ -19,6 +20,7 @@ const NAMED_SYSTEMS = `<!-- LEAF NAMED SYSTEMS -->
 <script src="leaf-law.js"></script>
 <script src="leaf-mind.js"></script>
 <script src="leaf-crown.js"></script>
+<script src="leaf-veil.js"></script>
 <!-- /LEAF NAMED SYSTEMS -->`;
 
 async function installNamedSystems(response) {
