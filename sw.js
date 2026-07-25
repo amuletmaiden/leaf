@@ -2,11 +2,13 @@
    Network-first so a new publish takes effect immediately when online;
    cache falls in behind so the site opens instantly on repeat visits and
    still opens offline. HTML responses receive one compatibility patch:
-   backtick dismisses the help menu before toggling the terminal. */
+   when help is open, backtick closes both help and terminal; otherwise it
+   toggles the terminal normally. */
 
-const CACHE = 'leaf-v3';
+const CACHE = 'leaf-v4';
 const OLD_BACKTICK_HANDLER = "  if(e.key==='`'){\n    e.preventDefault();\n    term.style.display=term.style.display==='none'?'block':'none';";
-const NEW_BACKTICK_HANDLER = "  if(e.key==='`'){\n    e.preventDefault();\n    hideHelp();\n    term.style.display=term.style.display==='none'?'block':'none';";
+const PREVIOUS_BACKTICK_HANDLER = "  if(e.key==='`'){\n    e.preventDefault();\n    hideHelp();\n    term.style.display=term.style.display==='none'?'block':'none';";
+const NEW_BACKTICK_HANDLER = "  if(e.key==='`'){\n    e.preventDefault();\n    if(helpBox.style.display!=='none'){\n      hideHelp();\n      term.style.display='none';\n      term.blur();\n      return;\n    }\n    term.style.display=term.style.display==='none'?'block':'none';";
 
 async function patchHtml(response) {
   if (!response || !response.ok) return response;
@@ -14,9 +16,12 @@ async function patchHtml(response) {
   if (!type.includes('text/html')) return response;
 
   const text = await response.text();
-  const patched = text.includes(NEW_BACKTICK_HANDLER)
-    ? text
-    : text.replace(OLD_BACKTICK_HANDLER, NEW_BACKTICK_HANDLER);
+  let patched = text;
+  if (!text.includes(NEW_BACKTICK_HANDLER)) {
+    patched = text.includes(PREVIOUS_BACKTICK_HANDLER)
+      ? text.replace(PREVIOUS_BACKTICK_HANDLER, NEW_BACKTICK_HANDLER)
+      : text.replace(OLD_BACKTICK_HANDLER, NEW_BACKTICK_HANDLER);
+  }
 
   const headers = new Headers(response.headers);
   headers.delete('content-length');
