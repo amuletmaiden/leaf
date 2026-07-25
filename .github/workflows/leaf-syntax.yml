@@ -1,0 +1,29 @@
+name: Leaf syntax guard
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'leaf-*.js'
+      - 'council*.js'
+      - 'sw.js'
+      - '.github/workflows/leaf-syntax.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check runtime JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in sw.js leaf-*.js council*.js; do
+            [ -f "$file" ] || continue
+            echo "checking $file"
+            node --check "$file"
+          done
