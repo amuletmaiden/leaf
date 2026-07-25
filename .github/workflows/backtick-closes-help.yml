@@ -1,0 +1,48 @@
+name: Backtick closes help
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/backtick-closes-help.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Patch published and source pages
+        shell: python
+        run: |
+          from pathlib import Path
+
+          old = """  if(e.key==='`'){
+              e.preventDefault();
+              term.style.display=term.style.display==='none'?'block':'none';"""
+          new = """  if(e.key==='`'){
+              e.preventDefault();
+              hideHelp();
+              term.style.display=term.style.display==='none'?'block':'none';"""
+
+          for filename in ("index.html", "leaf_6.html"):
+              path = Path(filename)
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{filename}: expected one handler, found {count}")
+              path.write_text(text.replace(old, new), encoding="utf-8")
+
+      - name: Commit fix and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/backtick-closes-help.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html leaf_6.html .github/workflows/backtick-closes-help.yml
+          git commit -m "fix: let backtick close the help menu"
+          git push
