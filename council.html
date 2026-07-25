@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>leaf council</title>
+<style>
+:root{--r:#ff0000;--g:#00ff00;--p:#ff00ff;--b:#00c8ff;--y:#ffff00;--ink:#dce7ee;--muted:#77858f;--line:#17232b;--panel:#070b0e}
+*{box-sizing:border-box}
+html{background:#000;color-scheme:dark}
+body{margin:0;background:#000;color:var(--ink);font-family:"Courier New",monospace;font-size:14px;line-height:1.55}
+a{color:var(--b)}
+main{width:min(1180px,calc(100% - 28px));margin:auto;padding:34px 0 80px}
+header{padding:16px 0 28px;border-bottom:1px solid var(--line)}
+h1{font-size:clamp(2.2rem,7vw,5.6rem);line-height:.88;letter-spacing:-.075em;margin:18px 0 20px;font-weight:400}
+h2{font-size:1.25rem;letter-spacing:.1em;text-transform:lowercase;margin:0 0 18px;color:var(--b);font-weight:400}
+h3{margin:0 0 8px;font-size:1rem;font-weight:400}
+p{margin:0 0 12px}
+.kicker{color:var(--muted);letter-spacing:.14em;font-size:.75rem}
+.lede{max-width:780px;color:#aab9c3;font-size:1rem}
+nav{display:flex;gap:18px;flex-wrap:wrap;margin-top:20px;font-size:.8rem}
+section{padding:34px 0;border-bottom:1px solid var(--line)}
+.list{display:grid;gap:10px}
+.row{display:grid;grid-template-columns:24px 1fr;gap:10px;align-items:start;padding:12px 14px;border:1px solid var(--line);background:var(--panel)}
+.row input{margin-top:4px;accent-color:var(--g)}
+.row textarea{width:100%;min-height:52px;margin-top:9px;resize:vertical;background:#020405;border:1px solid #15222a;color:#b9c8d2;padding:8px;font:12px/1.45 "Courier New",monospace}
+.inventory{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}
+.card{display:grid;grid-template-columns:94px 1fr;gap:13px;border:1px solid var(--line);background:var(--panel);padding:12px;min-height:150px}
+.card canvas{width:94px;height:94px;background:#000;border:1px solid #10191f}
+.card textarea{width:100%;min-height:54px;resize:vertical;background:#020405;border:1px solid #15222a;color:#b9c8d2;padding:7px;font:11px/1.4 "Courier New",monospace}
+.card .meta{font-size:.74rem;color:var(--muted);margin-bottom:7px}
+.card label{font-size:.73rem;color:#83919a;display:flex;gap:7px;align-items:center;margin-top:7px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px}
+button{background:#030608;border:1px solid #24404d;color:#a7d7e7;padding:10px 14px;font:12px "Courier New",monospace;cursor:pointer}
+button:hover{border-color:var(--b);color:#fff}
+#status{color:#64737d;font-size:.75rem}
+.r{color:var(--r)}.g{color:var(--g)}.p{color:var(--p)}.b{color:var(--b)}.y{color:var(--y)}
+.note{color:#8999a4;font-size:.8rem}
+@media(max-width:620px){.card{grid-template-columns:76px 1fr}.card canvas{width:76px;height:76px}}
+</style>
+</head>
+<body>
+<main>
+<header>
+<div class="kicker"><span class="r">leaf</span> · <span class="g">coun</span><span class="b">cil</span></div>
+<h1><span class="g">questions</span><br><span class="p">proposals</span><br><span class="b">inventory</span></h1>
+<p class="lede">A working ledger for the simulation. Checks and notes stay in this browser until dispatched. Dispatch opens a private GitHub issue draft in <code>kt-bus</code>; nothing is transmitted before that gesture.</p>
+<nav><a href="index.html">return to leaf</a><a href="#questions">questions</a><a href="#ideas">ideas</a><a href="#inventory">inventory</a></nav>
+</header>
+
+<section id="questions"><h2>questions for Katherine</h2><div class="list" id="questionList"></div></section>
+<section id="ideas"><h2>ideas moving forward</h2><div class="list" id="ideaList"></div></section>
+<section id="inventory"><h2>inventory of the world</h2><p class="note">Each miniature is a diagrammatic rendering, not a screenshot. Check an item when reviewed; write anything beside it.</p><div class="inventory" id="inventoryGrid"></div></section>
+<section><h2>dispatch</h2><p class="note">This composes your checked items and notes into a private issue draft. GitHub still asks you for the final submit because this static site holds no credential and sends nothing by itself.</p><div class="actions"><button id="dispatch">dispatch notes</button><button id="copy">copy ledger</button><span id="status"></span></div></section>
+</main>
+<script>
+const STORE='leaf_council_v1';
+const questions=[
+['q1','Which loose things should the scavenger take: red sparks, magenta relation-motes, glints, star debris, or only some of them?'],
+['q2','Should the star-devourer prefer only the largest stars, or also dense constellations of ordinary stars?'],
+['q3','When the star-devourer completes HEART → POWER → ICE, what should remain: an ice shell, a law node, a scar, or a daughter?'],
+['q4','How legible should contagious law be from behaviour alone? Which rhythmic change would let you discover it without diagnostic marks?'],
+['q5','Should numbered saves contain the Fossil Orchard as part of that world, or should the Orchard remain shared across all slots?'],
+['q6','Which first relations deserve permanent branches, and which are too ordinary to fossilize?'],
+['q7','Are the red and magenta motes objectionable because there are too many, because they are round, or because they sit independently of larger forms?'],
+['q8','What conditions should call the green→pink and pink→green goddesses into being?'],
+['q9','Should a scavenger leave clean emptiness, or weave what she gathers into a skirt, trail, nest, or new substance?'],
+['q10','Should Zettaitsune preserve only ice and law, or also preserve relations and memories while she stands?']
+];
+const ideas=[
+['i1','Star Temperance — make the extreme upper tail rarer while leaving a continuous stellar spectrum.'],
+['i2','The Star-Devourer ❤️🩷🩵 — hunts the largest lights; mass becomes turning, then freezes into an ice remainder.'],
+['i3','The Scavenger 💚🩷 — sight seeks residue and ferments it; a natural answer to loose red and magenta polka dots.'],
+['i4','The Bloom-Bringer 🩷💚 — rot gives birth to sight; unlike the scavenger, she does not clean debris but turns active decay into green light and terrain.'],
+['i5','Mote morphology — red becomes directional sparks or embers; magenta appears in short relational chains, arcs, or clusters instead of independent circles.'],
+['i6','Law without sigils — show contagion through synchronized pauses, angular paths, repeated intervals, and sudden phase-locking rather than visible squares.'],
+['i7','Selective devouring — the star-eater reduces giant-star crowding organically without becoming a generic population cap.'],
+['i8','Scavenged garments — what is collected remains visible on the goddess, allowing cleanup to become memory rather than deletion.'],
+['i9','Fourfold Accord — eventually move all four forces into one compositional integrator after the newer beings and law are understood.'],
+['i10','Light and occlusion — bodies tint what they illuminate and hide what stands behind them, strengthening spatial depth without adding interface.']
+];
+const inventory=[
+['heart','HEART','red self, fire, rings, daughters'],
+['love','LOVE','green gaze, motion, attention'],
+['law','TEMPLE / LAW','blue lattice and settled law'],
+['ice','ICE','cooled law and constellation material'],
+['power','POWER / GYRE','magenta turning, rot, transmutation'],
+['stars','STARS','gold lights with mass and motion'],
+['gold','GOLD / GLINTS','displaced heat and brief light'],
+['daughter','HEART DAUGHTERS','derived red selves wearing law'],
+['vess','VESSELS / GODDESSES','red cores clothed in blue law'],
+['ahika','AHIKA','kept light seated in law'],
+['zettaitsune','ZETTAITSUNE','green–blue–green sounding state'],
+['aggression','AGGRESSION','red–green–pink transit and cuts'],
+['magenta','MAGENTA MOTES','relation produced where red and blue meet'],
+['starfall','STARFALL','ballistic return of stellar mass'],
+['orchard','FOSSIL ORCHARD','first relations preserved as branches'],
+['contagion','CONTAGIOUS LAW','local snapping, rhythm, and direction'],
+['slots','POCKET WORLDS','numbered browser-local save states']
+];
+let state={};try{state=JSON.parse(localStorage.getItem(STORE)||'{}')||{}}catch(_){state={}}
+function saveState(){try{localStorage.setItem(STORE,JSON.stringify(state))}catch(_){}}
+function bind(id,kind){const key=kind+':'+id;return{done:!!state[key+':done'],note:state[key+':note']||'',setDone(v){state[key+':done']=v;saveState()},setNote(v){state[key+':note']=v;saveState()}}}
+function makeRows(target,data,kind){const host=document.getElementById(target);for(const [id,text] of data){const s=bind(id,kind),row=document.createElement('div');row.className='row';const check=document.createElement('input');check.type='checkbox';check.checked=s.done;check.onchange=()=>s.setDone(check.checked);const body=document.createElement('div');body.innerHTML='<div>'+text+'</div>';const ta=document.createElement('textarea');ta.placeholder='notes';ta.value=s.note;ta.oninput=()=>s.setNote(ta.value);body.appendChild(ta);row.append(check,body);host.appendChild(row)}}
+makeRows('questionList',questions,'question');makeRows('ideaList',ideas,'idea');
+function drawIcon(c,type){const x=c.getContext('2d'),w=c.width=188,h=c.height=188;x.fillStyle='#000';x.fillRect(0,0,w,h);x.save();x.translate(94,94);x.globalCompositeOperation='lighter';const ring=(r,col,a=1)=>{x.strokeStyle=col;x.globalAlpha=a;x.lineWidth=2;x.beginPath();x.arc(0,0,r,0,Math.PI*2);x.stroke()};const dot=(px,py,r,col,a=1)=>{x.fillStyle=col;x.globalAlpha=a;x.beginPath();x.arc(px,py,r,0,Math.PI*2);x.fill()};
+if(type==='heart'){for(let r=20;r<65;r+=15)ring(r,'#ff3228',.55);dot(0,0,18,'#ff0000');}
+else if(type==='love'){dot(-38,18,16,'#00ff55');x.fillStyle='rgba(0,255,110,.20)';x.beginPath();x.moveTo(-25,18);x.lineTo(80,-32);x.lineTo(80,58);x.closePath();x.fill();}
+else if(type==='law'||type==='ice'){x.strokeStyle=type==='ice'?'#a8ffff':'#00c8ff';x.globalAlpha=.8;for(let i=0;i<14;i++){const a=i*2.4,r=15+i*4,px=Math.cos(a)*r,py=Math.sin(a)*r;dot(px,py,3,x.strokeStyle);if(i){x.beginPath();x.moveTo(Math.cos((i-1)*2.4)*(11+(i-1)*4),Math.sin((i-1)*2.4)*(11+(i-1)*4));x.lineTo(px,py);x.stroke()}}}
+else if(type==='power'){for(let r=18;r<72;r+=11){x.strokeStyle='#ff00ff';x.globalAlpha=.7;x.beginPath();x.arc(0,0,r,r*.02,r*5.3);x.stroke()}dot(0,0,13,'#ff00ff');}
+else if(type==='stars'||type==='gold'){for(let i=0;i<20;i++){const a=i*2.7,r=10+(i*17)%76;dot(Math.cos(a)*r,Math.sin(a)*r,i%7===0?6:2,type==='stars'?'#ffff44':'#fff0a0',.8)}}
+else if(type==='daughter'){dot(0,-8,17,'#ff0000');for(let i=0;i<8;i++)dot(Math.cos(i*.78)*35,18+Math.sin(i*.78)*13,3,'#00c8ff');}
+else if(type==='vess'){dot(0,-8,16,'#ff3322');for(let i=0;i<12;i++)dot(Math.cos(i*.52)*(28+(i%2)*12),20+Math.sin(i*.52)*14,3,'#00c8ff');}
+else if(type==='ahika'){dot(0,-5,13,'#ffff00');for(let i=0;i<10;i++)dot(Math.cos(i*.63)*34,18+Math.sin(i*.63)*14,3,'#00c8ff');}
+else if(type==='zettaitsune'){ring(42,'#00ff66');ring(58,'#00c8ff');ring(70,'#00ff66');dot(0,0,15,'#baffdf');}
+else if(type==='aggression'){for(let i=0;i<3;i++){const a=i*2.094;dot(Math.cos(a)*19,Math.sin(a)*19,13,['#ff0000','#00ff00','#ff00ff'][i]);x.strokeStyle=['#ff0000','#00ff00','#ff00ff'][i];x.beginPath();x.moveTo(Math.cos(a)*25,Math.sin(a)*25);x.lineTo(Math.cos(a)*76,Math.sin(a)*76);x.stroke()}}
+else if(type==='magenta'){for(let i=0;i<18;i++){const a=i*1.73,r=8+(i*13)%72;dot(Math.cos(a)*r,Math.sin(a)*r,3,'#ff00ff',.72)}}
+else if(type==='starfall'){x.strokeStyle='#ffff77';x.lineWidth=2;x.beginPath();x.moveTo(-72,-54);x.quadraticCurveTo(8,-88,68,58);x.stroke();dot(68,58,8,'#ffff00');}
+else if(type==='orchard'){x.strokeStyle='#00c8ff';x.globalAlpha=.6;x.beginPath();x.moveTo(0,76);x.lineTo(0,-30);x.lineTo(-48,-70);x.moveTo(0,-30);x.lineTo(50,-62);x.moveTo(0,10);x.lineTo(58,15);x.stroke();dot(-48,-70,6,'#ff0000');dot(50,-62,6,'#00ff00');dot(58,15,6,'#ff00ff');}
+else if(type==='contagion'){for(let i=-3;i<=3;i++)for(let j=-3;j<=3;j++){const a=(i+j)*.4;dot(i*21,j*21,2.2,'#00c8ff',.2+.07*((i+j+8)%4))}ring(54,'#00c8ff',.25)}
+else if(type==='slots'){for(let i=0;i<4;i++){x.strokeStyle=['#ff0000','#00ff00','#ff00ff','#00c8ff'][i];x.strokeRect(-52+i*8,-52+i*8,76,76)}}
+x.restore()}
+const grid=document.getElementById('inventoryGrid');for(const [id,name,meta] of inventory){const s=bind(id,'inventory'),card=document.createElement('div');card.className='card';const c=document.createElement('canvas');const body=document.createElement('div');const title=document.createElement('h3');title.textContent=name;const m=document.createElement('div');m.className='meta';m.textContent=meta;const ta=document.createElement('textarea');ta.placeholder='notes';ta.value=s.note;ta.oninput=()=>s.setNote(ta.value);const label=document.createElement('label');const check=document.createElement('input');check.type='checkbox';check.checked=s.done;check.onchange=()=>s.setDone(check.checked);label.append(check,document.createTextNode('reviewed'));body.append(title,m,ta,label);card.append(c,body);grid.appendChild(card);drawIcon(c,id)}
+function ledger(){let out='# Leaf Council notes\n\n';const add=(title,data,kind)=>{out+='## '+title+'\n';for(const [id,text] of data){const s=bind(id,kind);if(s.done||s.note.trim())out+='- ['+(s.done?'x':' ')+'] '+text+(s.note.trim()?'\n  - '+s.note.trim().replace(/\n/g,'\n    '):'')+'\n'}out+='\n'};add('Questions',questions,'question');add('Ideas',ideas,'idea');out+='## Inventory\n';for(const [id,name,meta] of inventory){const s=bind(id,'inventory');if(s.done||s.note.trim())out+='- ['+(s.done?'x':' ')+'] **'+name+'** — '+meta+(s.note.trim()?'\n  - '+s.note.trim().replace(/\n/g,'\n    '):'')+'\n'}return out}
+const status=document.getElementById('status');document.getElementById('copy').onclick=async()=>{try{await navigator.clipboard.writeText(ledger());status.textContent='copied'}catch(_){status.textContent='copy failed'}};document.getElementById('dispatch').onclick=()=>{const body=ledger(),title='Leaf Council — '+new Date().toISOString().slice(0,10);const url='https://github.com/amuletmaiden/kt-bus/issues/new?title='+encodeURIComponent(title)+'&body='+encodeURIComponent(body);if(url.length>7500){navigator.clipboard.writeText(body).catch(()=>{});status.textContent='ledger copied; paste it into the issue';window.open('https://github.com/amuletmaiden/kt-bus/issues/new?title='+encodeURIComponent(title),'_blank','noopener')}else window.open(url,'_blank','noopener')};
+</script>
+</body>
+</html>
