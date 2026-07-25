@@ -2,20 +2,23 @@
    LEGISLATIVE LADDER
    Official change name: Legislative Ladder
 
+   VEILED ASCENSION
+   Official change name: Veiled Ascension
+
    A goddess does not receive a generic intelligence score. Accumulated law in
-   her skirt changes the kind of mind she is capable of: impulse, tropism,
-   memory, anticipation, legislation. The added fields ride inside Leaf's
-   existing snapshots because they are ordinary enumerable object properties.
+   her skirt changes the kind of mind she is capable of. Those stages remain
+   entirely internal: no notices, help entries, genealogy labels, or public
+   readouts announce them. The initiate learns only from changed behaviour.
    ========================================================================== */
 (function () {
   'use strict';
 
   const STAGES = [
-    { name: 'impulse', min: 0, color: '#ff0000' },
-    { name: 'tropism', min: 2, color: '#00ff00' },
-    { name: 'memory', min: 5, color: '#00c8ff' },
-    { name: 'anticipation', min: 9, color: '#8a5cff' },
-    { name: 'legislation', min: 14, color: '#ffd700' }
+    { name: 'impulse', min: 0 },
+    { name: 'tropism', min: 2 },
+    { name: 'memory', min: 5 },
+    { name: 'anticipation', min: 9 },
+    { name: 'legislation', min: 14 }
   ];
 
   function stageFor(goddess) {
@@ -85,28 +88,13 @@
     if (mind.memories.length > 12) mind.memories.splice(0, mind.memories.length - 12);
   }
 
-  function announceStage(stage) {
-    if (!globalThis.LEAF_GENEALOGY || stage <= 0) return;
-    const def = STAGES[stage];
-    const parent = stage === 1 ? 'law-awakens' : 'mind-' + STAGES[stage - 1].name;
-    LEAF_GENEALOGY.remember('mind-' + def.name, {
-      label: 'a goddess learns ' + def.name,
-      color: def.color,
-      parent
-    });
-  }
-
   function updateGoddess(goddess, index) {
     if (!goddess || typeof goddess !== 'object') return;
     const mind = ensureMind(goddess);
     const nextStage = stageFor(goddess);
-    if (nextStage > mind.stage) {
-      for (let s = mind.stage + 1; s <= nextStage; s++) announceStage(s);
+    if (nextStage !== mind.stage) {
       mind.stage = nextStage;
       mind.stageAt = typeof tick === 'number' ? tick : 0;
-      if (typeof notice === 'function') notice('goddess · ' + STAGES[nextStage].name);
-    } else if (nextStage < mind.stage) {
-      mind.stage = nextStage;
     }
 
     const [wx, wy, origin] = worldPosition(goddess);
@@ -154,20 +142,9 @@
     } catch (_) {}
   }
 
-  function describe() {
-    const counts = [0, 0, 0, 0, 0];
-    try {
-      for (const goddess of embers || []) counts[Math.max(0, Math.min(4, ensureMind(goddess).stage || 0))]++;
-    } catch (_) {}
-    const words = STAGES.map((s, i) => s.name + ' ' + counts[i]).join(' · ');
-    if (typeof notice === 'function') notice(words);
-    return counts;
-  }
-
   globalThis.LEAF_MIND = {
     officialName: 'Legislative Ladder',
-    stages: STAGES.map(s => s.name),
-    describe
+    veilName: 'Veiled Ascension'
   };
 
   setInterval(update, 180);
