@@ -112,6 +112,26 @@ Makes newly born extreme stars markedly rarer and lowers the stellar maximum sli
 
 Revert phrase: `revert Star Temperance`
 
+## Retrograde Hunger
+
+**Commits:** `0961e4ca7e844e8cf133a5745317a760a3ca10de`, `f6f769ca98238c4e5f9ace926916bcc9fbaed7cb`
+
+**File:** `leaf-new-goddesses.js`
+
+Adds the naturally arising HEART · POWER · ICE star-devourer. She enters only under exceptional giant-star pressure in a world that has already made ice, hunts the largest lights, holds their mass as turning, and deposits that turning as new ice. She is mortal, saved with the world, subject to contagious law, and has no command or announcement.
+
+Revert phrase: `revert Retrograde Hunger`
+
+## Scavenger's Hem
+
+**Commits:** `0961e4ca7e844e8cf133a5745317a760a3ca10de`, `f6f769ca98238c4e5f9ace926916bcc9fbaed7cb`
+
+**File:** `leaf-new-goddesses.js`
+
+Adds the naturally arising LOVE · POWER scavenger. She appears when loose magenta relation and exhausted red fire accumulate, gathers them into a visible hem, and ferments overflow into quiet persistent traces rather than deleting it without remainder. She is mortal, saved with the world, subject to contagious law, and has no command or announcement.
+
+Revert phrase: `revert Scavenger's Hem`
+
 ## Zettaitsune Trine
 
 **Commits:** `a5f5598f2cfe324a0d2316087a7405a305142bcf`, `52ac357aab9cc18b0ffcb54f14b015adda68c27c`
@@ -144,13 +164,23 @@ Revert phrase: `revert Council Ledger`
 
 ## Living Ledger
 
-**Commit:** `75ffe6c7e079eae45bb25daff706b5f836dc5901`
+**Commits:** `75ffe6c7e079eae45bb25daff706b5f836dc5901`, `809d40748d61094a006b615225e45b0b87f1b54d`
 
 **File:** `council-live.js`
 
 Makes Council Ledger active. Inventory miniatures animate only while visible, cards report counts or presence from the latest local world, questions can be held or resolved, and a law audit records notes on every proposition governing law. The page also tracks active work and includes its notes in dispatch.
 
 Revert phrase: `revert Living Ledger`
+
+## Ecology Witness
+
+**Commit:** `67ca9f8d301659550c40a9d106a66e2b7806184f`
+
+**File:** `council-ecology.js`
+
+Adds active inventory cards for the star-devourer and scavenger, animates their forms, reads their presence and work from the latest local world, and marks both ecological projects active in Council Ledger.
+
+Revert phrase: `revert Ecology Witness`
 
 ## Lexicon Crown
 
@@ -176,11 +206,11 @@ Revert phrase: `revert Silent Doctrine`
 
 ## Integration Bridge
 
-**Current commit:** `166c144f433d214fa547783259077f6b10549276`
+**Current commit:** `848302c46c5086c41eba402e8e0313689c17365a`
 
 **File:** `sw.js`
 
-Loads the named simulation systems into Leaf world pages and Living Ledger into the council page. It claims and reloads a first-time page once so a visitor is not asked to understand or manually refresh a service worker.
+Loads the named simulation systems into Leaf world pages and the active ledger systems into the council page. It claims and reloads a first-time page once so a visitor is not asked to understand or manually refresh a service worker.
 
 Revert phrase: `revert Integration Bridge`
 
