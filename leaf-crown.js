@@ -2,9 +2,13 @@
    LEXICON CROWN
    Official change name: Lexicon Crown
 
+   SILENT DOCTRINE
+   Official change name: Silent Doctrine
+
    One registry owns command words, aliases, syllable-coloured help, and
    execution. The older terminal listener remains in the ancestral page but is
    intercepted before it can act, so there is one active source of truth.
+   Successful ritual commands do not narrate themselves.
    ========================================================================== */
 (function () {
   'use strict';
@@ -98,7 +102,6 @@
       const n = Number(arg);
       if (!Number.isFinite(n) || n <= 0) return say('?');
       pace = Math.max(0.1, Math.min(20000, n));
-      say('pace ' + pace);
     }
   });
   add({ word: 'fall', aliases: ['f'], kata: kata(['fall', K.gold]), run() { launchFall(); } });
@@ -106,7 +109,7 @@
   add({ word: 'attend', aliases: ['at'], kata: kata(['at', K.green], ['tend', K.blue]), run() { toggleWheel(); } });
   add({
     word: 'mute', aliases: ['mu', 'hush', 'hs'], kata: kata(['mute', K.grey]),
-    run() { sndOn = !sndOn; say(sndOn ? 'sound' : 'mute'); }
+    run() { sndOn = !sndOn; }
   });
   add({
     word: 'zettaitsune', aliases: ['zts', 'bride'],
@@ -199,6 +202,7 @@
 
   globalThis.LEAF_COMMANDS = {
     officialName: 'Lexicon Crown',
+    doctrineName: 'Silent Doctrine',
     registry,
     execute,
     showHelp: renderHelp,
