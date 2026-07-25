@@ -1,15 +1,18 @@
 /* Leaf service worker: network first, local fallback.
-   The temporary Integration Bridge injects the named-system scripts into HTML
-   until the canonical pages contain their script tags directly. It does not
-   rewrite Leaf's source logic. */
+   The temporary Integration Bridge injects named simulation systems only into
+   Leaf's world pages. Ordinary companion pages such as Council Ledger are
+   served untouched. */
 
-const CACHE = 'leaf-v11';
+const CACHE = 'leaf-v12';
 const SHELL = [
+  './index.html',
+  './council.html',
   './leaf-hearth.js',
   './leaf-slots.js',
   './leaf-genealogy.js',
   './leaf-law.js',
   './leaf-mind.js',
+  './leaf-star-temperance.js',
   './leaf-crown.js',
   './leaf-veil.js'
 ];
@@ -19,6 +22,7 @@ const NAMED_SYSTEMS = `<!-- LEAF NAMED SYSTEMS -->
 <script src="leaf-genealogy.js"></script>
 <script src="leaf-law.js"></script>
 <script src="leaf-mind.js"></script>
+<script src="leaf-star-temperance.js"></script>
 <script src="leaf-crown.js"></script>
 <script src="leaf-veil.js"></script>
 <!-- /LEAF NAMED SYSTEMS -->`;
@@ -29,7 +33,8 @@ async function installNamedSystems(response) {
   if (!type.includes('text/html')) return response;
 
   const text = await response.text();
-  const patched = text.includes('<!-- LEAF NAMED SYSTEMS -->')
+  const isWorld = text.includes('<canvas id="world"') || text.includes("<canvas id='world'");
+  const patched = !isWorld || text.includes('<!-- LEAF NAMED SYSTEMS -->')
     ? text
     : text.replace('</body>', NAMED_SYSTEMS + '\n</body>');
 
