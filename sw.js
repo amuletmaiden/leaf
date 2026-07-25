@@ -2,10 +2,10 @@
    Network-first so a new publish takes effect immediately when online;
    cache falls in behind so the site opens instantly on repeat visits and
    still opens offline. HTML responses receive three compatibility patches:
-   polished kata help, mute as the visible sound command, and backtick closing
-   both help and terminal when help is open. */
+   syllable-true kata help, mute as the visible sound command, and backtick
+   closing both help and terminal when help is open. */
 
-const CACHE = 'leaf-v5';
+const CACHE = 'leaf-v6';
 
 const OLD_HELP_BLOCK = `const HELP_LINES=[
   ['seed','#68f'],['reset','#68f'],['save','#68f'],['keep','#68f'],['load','#68f'],
@@ -16,21 +16,21 @@ const OLD_HELP_BLOCK = `const HELP_LINES=[
 
 const NEW_HELP_BLOCK = `const HELP_LINES=[
   '<span style="color:#ff0000">seed</span>',
-  '<span style="color:#ff00ff">re</span><span style="color:#ff0000">set</span>',
+  '<span style="color:#ff00ff">re</span><span style="color:#00c8ff">set</span>',
   '<span style="color:#00c8ff">save</span>',
   '<span style="color:#00c8ff">keep</span>',
   '<span style="color:#00c8ff">load</span>',
   '<span style="color:#00ff00">pace</span>',
-  '<span style="color:#ff00ff">fall</span>',
-  '<span style="color:#ff00ff">meet</span>',
+  '<span style="color:#ffd700">fall</span>',
+  '<span style="color:#8a5cff">meet</span>',
   '<span style="color:#00ff00">at</span><span style="color:#00c8ff">tend</span>',
-  '<span style="color:#00c8ff">mute</span>',
+  '<span style="color:#7a8496">mute</span>',
   '<span style="color:#00ff00">zet</span><span style="color:#00c8ff">tai</span><span style="color:#00ff00">tsu</span><span style="color:#00c8ff">ne</span>',
-  '<span style="color:#ff0000">ag</span><span style="color:#00ff00">gres</span><span style="color:#ff00ff">sion</span>',
-  '<span style="color:#00c8ff">a</span><span style="color:#00ff00">hi</span><span style="color:#ff0000">ka</span>',
-  '<span style="color:#ff0000">st</span><span style="color:#00ff00">ar</span>',
-  '<span style="color:#ff0000">st</span><span style="color:#00ff00">ar</span><span style="color:#ff00ff">s</span>',
-  '<span style="color:#ff00ff">gy</span><span style="color:#00ff00">re</span>',
+  '<span style="color:#ff0000">a</span><span style="color:#00ff00">gres</span><span style="color:#ff00ff">sion</span>',
+  '<span style="color:#00c8ff">a</span><span style="color:#ffd700">hi</span><span style="color:#00c8ff">ka</span>',
+  '<span style="color:#ffd700">star</span>',
+  '<span style="color:#ffd700">stars</span>',
+  '<span style="color:#ff00ff">gyre</span>',
 ];`;
 
 const OLD_SHOW_HELP = `function showHelp(){
