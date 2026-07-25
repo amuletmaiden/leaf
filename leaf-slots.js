@@ -5,13 +5,17 @@
    DEEP POCKETS
    Official change name: Deep Pockets
 
+   CHRONICLE LOOM
+   Official change name: Chronicle Loom
+
    SILENT DOCTRINE
    Official change name: Silent Doctrine
 
    Numbered local slots. `save 1` keeps the present world in slot 1 inside this
    browser; `load 1` opens it. Full worlds include two PNG memory layers, so the
    slots live in IndexedDB rather than tiny localStorage. Nothing is uploaded and
-   no file picker appears. Successful rites are silent. Only failure speaks.
+   no file picker appears. Successful rites are silent in the world and recorded
+   only in Chronicle Loom.
    ========================================================================== */
 (function () {
   'use strict';
@@ -33,6 +37,18 @@
 
   function say(text) {
     if (typeof notice === 'function') notice(text);
+  }
+
+  function chronicle(kind, label, color, slot, plate) {
+    try {
+      if (globalThis.LEAF_CHRONICLE) {
+        LEAF_CHRONICLE.record(kind, label, color, {
+          importance: 2,
+          plate: !!plate,
+          data: { slot: Number(slot) }
+        });
+      }
+    } catch (_) {}
   }
 
   function openDatabase() {
@@ -110,6 +126,7 @@
       try {
         await putWorld(slot, world);
         removeLegacy(slot);
+        chronicle('save', 'world sealed in pocket ' + slot, '#00c8ff', slot, true);
       } catch (_) {
         say('save failed');
       }
@@ -139,6 +156,7 @@
           return;
         }
         loadFromText(world);
+        chronicle('load', 'pocket ' + slot + ' opens', '#00ff00', slot, true);
       } catch (_) {
         say('load failed');
       }
@@ -158,6 +176,7 @@
   globalThis.LEAF_SLOTS = {
     officialName: 'Pocket Worlds',
     storageName: 'Deep Pockets',
+    chronicleName: 'Chronicle Loom',
     doctrineName: 'Silent Doctrine',
     save,
     load,
