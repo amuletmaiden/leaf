@@ -62,6 +62,16 @@ Adds local lawfulness fields. Matter in lawful regions begins snapping to grids,
 
 Revert phrase: `revert Law of Contagion`
 
+## Chorus of Precedent
+
+**Commit:** `bb7991fd2e8d8548734da6ae69c07df799dc3ff9`
+
+**File:** `leaf-law.js`
+
+Makes contagious law legible without restoring diagnostic squares. Bodies inside the same lawful field gradually share a visible pulse; between permitted beats their existing momentum is held, then released on the beat. Stronger law produces tighter cadence while preserving direction and momentum rather than replacing them.
+
+Revert phrase: `revert Chorus of Precedent`
+
 ## Jurisprudential Drift
 
 **Commit:** `0abd41c2e7c0c421bbee107d860fb68933631bf4`
@@ -206,7 +216,7 @@ Revert phrase: `revert Silent Doctrine`
 
 ## Integration Bridge
 
-**Current commit:** `848302c46c5086c41eba402e8e0313689c17365a`
+**Current commit:** `21853d5088cbd6c18cb009b124f3c99a32c97ab5`
 
 **File:** `sw.js`
 
