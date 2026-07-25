@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>leaf · living iconography</title>
+<style>
+html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#000;font-family:"Courier New",monospace}
+#world{position:fixed;inset:0;width:100%;height:100%;border:0;background:#000}
+#name{position:fixed;z-index:10;top:15px;left:50%;transform:translateX(-50%);font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:#748993;pointer-events:none;opacity:.62;transition:opacity 1.5s;text-shadow:0 0 12px rgba(180,235,255,.2)}
+#name.sleep{opacity:.08}
+#tools{position:fixed;z-index:20;right:12px;bottom:12px;display:flex;gap:4px;padding:5px;border:1px solid rgba(110,195,235,.12);background:rgba(0,3,6,.72);backdrop-filter:blur(8px);opacity:.13;transition:opacity .18s}
+#tools:hover,#tools:focus-within{opacity:.92}
+#tools a,#tools button{border:0;background:transparent;color:#839aa5;text-decoration:none;padding:6px 8px;font:10px "Courier New",monospace;cursor:pointer}
+#tools a:hover,#tools button:hover{color:#fff}
+#tools button[data-on="0"]{text-decoration:line-through;color:#4e5b61}
+#status{position:fixed;z-index:20;left:12px;bottom:12px;color:#53666f;font-size:10px;letter-spacing:.06em;pointer-events:none;opacity:0;transition:opacity .3s}
+#status.show{opacity:.8}
+#failure{position:fixed;inset:0;display:none;place-items:center;background:#000;color:#77909b;font-size:12px;text-align:center;z-index:30}
+</style>
+</head>
+<body>
+<iframe id="world" src="index.html?render=living-iconography" title="Leaf living iconography"></iframe>
+<div id="name"><span style="color:#ff0000">liv</span><span style="color:#00ff00">ing</span> <span style="color:#ff00ff">i</span><span style="color:#00c8ff">co</span><span style="color:#ffff00">nog</span><span style="color:#00ff00">ra</span><span style="color:#00c8ff">phy</span></div>
+<nav id="tools"><a href="index.html">main</a><a href="council.html">council</a><button id="toggle" type="button" data-on="1">rework</button></nav>
+<div id="status">\ compare original · the world state is shared</div>
+<div id="failure">The renderer fork could not enter Leaf.<br>Reload this page once.</div>
+<script>
+(function(){
+'use strict';
+const frame=document.getElementById('world'),toggle=document.getElementById('toggle'),status=document.getElementById('status'),failure=document.getElementById('failure'),name=document.getElementById('name');
+let child=null;
+function flash(text){status.textContent=text;status.classList.add('show');clearTimeout(flash.t);flash.t=setTimeout(()=>status.classList.remove('show'),2600)}
+function set(on){try{child.LEAF_RENDER_REWORK.setEnabled(on);toggle.dataset.on=on?'1':'0';flash(on?'living iconography':'ancestral rendering')}catch(_){}}
+function attach(){
+  try{
+    child=frame.contentWindow;const doc=frame.contentDocument;if(!child||!doc)throw 0;
+    const s=doc.createElement('script');s.src='leaf-render-rework.js';s.onload=()=>{set(true);setTimeout(()=>name.classList.add('sleep'),4200);flash('actual renderers replaced · \\ compares')};s.onerror=()=>failure.style.display='grid';doc.body.appendChild(s);
+    child.addEventListener('keydown',keys,true);
+  }catch(_){failure.style.display='grid'}
+}
+function keys(e){if(e.key==='\\'){e.preventDefault();const on=toggle.dataset.on!=='1';set(on)}}
+frame.addEventListener('load',attach);addEventListener('keydown',keys,true);toggle.onclick=()=>set(toggle.dataset.on!=='1');
+})();
+</script>
+</body>
+</html>
