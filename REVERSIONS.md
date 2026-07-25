@@ -54,11 +54,11 @@ Revert phrase: `revert Lexicon Crown`
 
 ## Integration Bridge
 
-**Commit:** `745776fa1c37a8e56837ad173251547f70894a33`
+**Current commit:** `988b5cff5ab3f2465c621ceac18a83c896235573`
 
 **File:** `sw.js`
 
-Loads the named systems into served HTML pages while keeping their logic in separate files. This is plumbing, not a metaphysical feature. Reverting any named feature should remove its script from the bridge as well as reverting its own file.
+Loads the named systems into served HTML pages while keeping their logic in separate files. It claims and reloads a first-time page once so a visitor is not asked to understand or manually refresh a service worker. This is plumbing, not a metaphysical feature. Reverting any named feature should remove its script from the bridge as well as reverting its own file.
 
 Revert phrase: `revert Integration Bridge`
 
