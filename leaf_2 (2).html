@@ -1,0 +1,2793 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>leaf</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%2300c8ff'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23ff0033'/%3E%3C/svg%3E">
+<style>
+html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;font-family:"Courier New",monospace}
+#world{display:block;width:100vw;height:100vh}
+#title{position:fixed;top:12px;left:16px;font-size:11px;color:#3a3a3a;letter-spacing:2px;pointer-events:none}
+#tally{position:fixed;top:12px;right:16px;font-size:11px;color:#555;text-align:right;line-height:1.7;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="world" width="1280" height="720"></canvas>
+<div id="tally"><span style="color:#68f">law 3</span><br><span style="color:#4dd">ice 0</span><br><span style="color:#f74">vess 0</span><br><span style="color:#fd6">ahika 0</span><br><span style="color:#d5d">gyres 1</span><br><span style="color:#d66">hearts 1</span><br><span style="color:#ca2">stars 0</span></div>
+<script>
+"use strict";
+const cv=document.getElementById('world'), X=cv.getContext('2d');
+/* W/H are the world's logical size and always equal VW/VH — the field fits the
+   window. Resizing scales the accumulated paint and silk into the new size so
+   nothing is lost, then rebuilds the walker paths on the new dimensions. */
+let W=0,H=0,VW=0,VH=0,viewScale=1,viewDx=0,viewDy=0;
+let pathPhases={heart:0,love:2.1,temple:4.2,power:1.2};
+let pHeart,pLove,pTemple,pPower;
+const P=document.createElement('canvas'); const PX=P.getContext('2d');
+const S=document.createElement('canvas'); const SX=S.getContext('2d');
+let worldReady=false, resizePending=false;
+function updateView(){
+  viewScale=1;viewDx=0;viewDy=0;
+  X.setTransform(1,0,0,1,0,0);
+}
+/* RESOLUTION IS NEVER SURRENDERED.
+   The record layers are kept at a high-water mark: the largest logical size the
+   world has ever occupied. A smaller window does not shrink the record, it
+   merely views it through a scale factor, so detail painted at a large size
+   survives being minimized and returns intact when the window grows again.
+   Enlarging past the mark does resample once — unavoidable — but shrinking,
+   which is the common case, is now lossless. */
+let bakeW=0,bakeH=0,bakeScale=1;
+function resizeLayer(canvas,ctx,newW,newH){
+  if(newW===canvas.width&&newH===canvas.height)return;
+  if(!canvas.width||!canvas.height){canvas.width=newW;canvas.height=newH;return;}
+  const tmp=document.createElement('canvas');tmp.width=canvas.width;tmp.height=canvas.height;
+  tmp.getContext('2d').drawImage(canvas,0,0);
+  canvas.width=newW;canvas.height=newH;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.imageSmoothingQuality='high';
+  ctx.drawImage(tmp,0,0,tmp.width,tmp.height,0,0,newW,newH);
+}
+/* Grow the backing store only; never shrink it. Returns true if it grew. */
+function ensureBacking(w,h){
+  const nw=Math.max(bakeW,w), nh=Math.max(bakeH,h);
+  if(nw===bakeW&&nh===bakeH&&P.width===bakeW&&P.height===bakeH)return false;
+  resizeLayer(P,PX,nw,nh);resizeLayer(S,SX,nw,nh);
+  bakeW=nw;bakeH=nh;
+  return true;
+}
+/* All world→record drawing goes through this transform, so a 1200px-wide world
+   painting into a 1900px-wide record lands in the right place at full detail. */
+function syncBakeTransform(){
+  bakeScale=(bakeW&&W)?bakeW/W:1;
+  const sy=(bakeH&&H)?bakeH/H:1;
+  PX.setTransform(bakeScale,0,0,sy,0,0);
+  SX.setTransform(bakeScale,0,0,sy,0,0);
+}
+function adoptLogicalWorld(w,h){
+  w=Math.max(1,Math.round(w));h=Math.max(1,Math.round(h));
+  W=w;H=h;
+  ensureBacking(W,H);
+  syncBakeTransform();
+  if(VW&&VH)updateView();
+  if(typeof setPaths==='function')setPaths();
+}
+function rs(){
+  const nw=Math.max(1,innerWidth), nh=Math.max(1,innerHeight);
+  if(nw===VW&&nh===VH)return;
+  VW=nw;VH=nh;
+  cv.width=VW;cv.height=VH;
+  W=VW;H=VH;
+  /* the record grows to meet the largest world seen, and never shrinks back */
+  ensureBacking(W,H);
+  syncBakeTransform();
+  updateView();
+  if(typeof setPaths==='function')setPaths();
+  X.save();X.setTransform(1,0,0,1,0,0);X.fillStyle='#000';X.fillRect(0,0,VW,VH);X.restore();
+}
+addEventListener('resize',()=>{
+  if(resizePending)return;
+  resizePending=true;
+  requestAnimationFrame(()=>{resizePending=false;rs();});
+});
+rs();
+const TAU=Math.PI*2, rand=(a,b)=>a+Math.random()*(b-a), lerp=(a,b,t)=>a+(b-a)*t;
+let tick=0;
+/* ============ PACE ============
+   This is an idle world. Someone may look in every fifteen minutes, or leave
+   it running all night and return in the morning; either way what they find
+   should be a world that has been GETTING somewhere, not one that finished in
+   the first ninety seconds and has been idling since.
+
+   So every major development is slow by default and passes through this one
+   dial. `pace` multiplies elapsed time: 1 is the true idle rate, higher values
+   compress it. Small events — sparks, motes, glints — are untouched, because
+   the texture of the world should stay alive at any speed; it is only the
+   arrivals, the growth, and the deaths that are stretched.
+
+   `slow(n)` scales an interval; `chance(p)` scales a per-frame probability. */
+let pace=1;
+function slow(n){ return Math.max(1, Math.round(n/pace)); }
+function chance(p){ return Math.min(1, p*pace); }
+/* every N ticks at the current pace, with a stable offset so independent
+   systems do not all fire on the same frame */
+function every(n,off){ const s=slow(n); return (tick+(off||0))%s===0; }
+
+function walker(cx,cy,rx,ry,sx,sy,ph){
+  return ()=>[ cx + Math.sin(tick*sx+ph)*rx, cy + Math.sin(tick*sy+ph*1.7)*ry ];
+}
+function setPaths(){
+  pHeart  = walker(W*0.5,H*0.42, W*0.30,H*0.26, 0.00052,0.00037, pathPhases.heart);
+  pLove   = walker(W*0.5,H*0.45, W*0.33,H*0.30, 0.00031,0.00047, pathPhases.love);
+  /* Law travels as widely as anything else; its slowness is not confinement. */
+  pTemple = walker(W*0.50,H*0.50, W*0.34,H*0.30, 0.00019,0.00027, pathPhases.temple);
+  pPower  = walker(W*0.58,H*0.55, W*0.27,H*0.24, 0.00043,0.00023, pathPhases.power);
+}
+setPaths();
+
+/* ============ HEART ============ */
+const heart={rings:[],sparks:[],skirt:[],shock:0};
+const daughters=[];
+function makeLawSkirtNode(i,source){
+  const ring=i<4?0:i<10?1:2;
+  const slot=ring===0?i:ring===1?i-4:i-10;
+  const count=ring===0?4:ring===1?6:8;
+  return {ring,a:slot*TAU/count+rand(-0.16,0.16),sp:(ring===1?-1:1)*rand(0.0025,0.0055),sz:rand(0.78,1.18),
+    ice:!!(source&&source.kind==='ice'),origin:source?{x:source.x,y:source.y,kind:source.kind}:null};
+}
+function fillLawSkirt(skirt,n){while(skirt.length<n)skirt.push(makeLawSkirtNode(skirt.length));}
+function lawSkirtPositions(x,y,scale,skirt){
+  const out=[];
+  for(const n of skirt||[]){
+    const a=n.a+tick*n.sp,rx=(16+n.ring*9)*scale,ry=(6+n.ring*4)*scale;
+    out.push({n,x:x+Math.cos(a)*rx,y:y+(11+n.ring*5)*scale+Math.sin(a)*ry,a});
+  }
+  return out;
+}
+function drawLawSkirt(x,y,scale,skirt,bright){
+  if(!skirt||!skirt.length)return;
+  const pts=lawSkirtPositions(x,y,scale,skirt),b=bright==null?1:bright;
+  X.save();X.lineWidth=Math.max(0.42,0.62*scale);X.lineCap='round';
+  for(let ring=0;ring<3;ring++){
+    const row=pts.filter(p=>p.n.ring===ring).sort((a,c)=>a.a-c.a);
+    if(row.length>1){
+      X.strokeStyle='rgba(62,105,255,'+(0.19+0.16*b)+')';X.beginPath();X.moveTo(row[0].x,row[0].y);
+      for(let i=1;i<row.length;i++)X.lineTo(row[i].x,row[i].y);
+      if(row.length>3)X.lineTo(row[0].x,row[0].y);X.stroke();
+    }
+  }
+  for(const p of pts){
+    if(p.n.ice){
+      X.fillStyle='rgba(145,250,255,'+(0.68+0.22*b)+')';
+      X.beginPath();X.arc(p.x,p.y,(1.25+0.45*b)*p.n.sz*scale,0,TAU);X.fill();
+    }else{
+      X.fillStyle='rgba(82,126,255,'+(0.72+0.18*b)+')';
+      X.beginPath();X.arc(p.x,p.y,(1.1+0.35*b)*p.n.sz*scale,0,TAU);X.fill();
+    }
+  }
+  X.restore();
+}
+function scatterLawSkirt(owner,x,y,scale,fraction){
+  if(!owner.skirt||!owner.skirt.length)return;
+  const pts=lawSkirtPositions(x,y,scale,owner.skirt);
+  for(let i=owner.skirt.length-1;i>=0;i--){
+    if(Math.random()<fraction){
+      const p=pts[i];
+      addElementImpact('temple',p.x,p.y,0.22);
+      skirtRain.push({x:p.x,y:p.y,vx:rand(-0.7,0.7),vy:rand(-0.5,0.1),age:0,life:rand(50,110),ice:p.n&&p.n.ice});
+      owner.skirt.splice(i,1);
+    }
+  }
+}
+function spendLawSkirt(owner,x,y,scale,count){
+  if(!owner.skirt||!owner.skirt.length)return 0;
+  const pts=lawSkirtPositions(x,y,scale,owner.skirt);
+  const indices=owner.skirt.map((_,i)=>i);
+  for(let i=indices.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[indices[i],indices[j]]=[indices[j],indices[i]];}
+  const chosen=indices.slice(0,Math.min(count,indices.length)).sort((a,b)=>b-a);
+  for(const i of chosen){
+    const p=pts[i];
+    addElementImpact('temple',p.x,p.y,0.28);
+    skirtRain.push({x:p.x,y:p.y,vx:rand(-0.7,0.7),vy:rand(-0.5,0.05),age:0,life:rand(60,120),ice:p.n&&p.n.ice});
+    owner.skirt.splice(i,1);
+  }
+  return chosen.length;
+}
+function heartAmp(ph){ const c=((tick+ph)%lore.beat)/lore.beat;
+  return Math.exp(-c*6)*Math.max(0,Math.sin(c*Math.PI*10)) + Math.exp(-((c-0.15+1)%1)*6)*0.6; }
+function updateHeart(hx,hy){
+  heart.shock*=0.90;
+  const c=tick%lore.beat;
+  if(c===0||c===Math.floor(lore.beat*0.15)){
+    heart.rings.push({r:20,a:1});
+    for(let i=0,n=4+Math.floor(Math.random()*4);i<n;i++){
+      const an=rand(0,TAU),sp=rand(0.8,2.4);
+      heart.sparks.push({x:hx,y:hy,vx:Math.cos(an)*sp,vy:Math.sin(an)*sp,age:0,life:rand(120,260)});
+    }
+  }
+  for(let i=heart.rings.length-1;i>=0;i--){
+    const r=heart.rings[i]; r.r+=1.7; r.a*=0.972;
+    if(r.a<0.02) heart.rings.splice(i,1);
+  }
+  for(let i=daughters.length-1;i>=0;i--){
+    const h=daughters[i]; h.age++;h.shock=(h.shock||0)*0.88;if(!h.skirt)h.skirt=[];
+    /* III. POWER→HEART — rot leans on the fire: spent, not slain */
+    let ng=false;
+    for(const G of gyres){
+      if((G.x-h.x)**2+(G.y-h.y)**2<(180*G.scale)**2){ng=true;break;}
+    }
+    if(ng){
+      h.age+=1;
+      if(Math.random()<0.02){
+        const an=rand(0,TAU);
+        heart.sparks.push({x:h.x,y:h.y,vx:Math.cos(an)*1.4,vy:Math.sin(an)*1.4,age:0,life:rand(60,120)});
+      }
+    }
+    h.hot=lerp(h.hot||0, ng?1:0, 0.04);
+    h.vx+=(Math.random()-0.5)*0.05; h.vy+=(Math.random()-0.5)*0.05;
+    h.vx*=0.98; h.vy*=0.98; h.x+=h.vx; h.y+=h.vy;
+    if((tick+h.ph)%lore.beat===0 && Math.random()<0.6){
+      const an=rand(0,TAU);
+      heart.sparks.push({x:h.x,y:h.y,vx:Math.cos(an)*1.2,vy:Math.sin(an)*1.2,age:0,life:rand(80,160)});
+    }
+    if(h.age>h.life){
+      PX.fillStyle='rgba(110,25,18,0.5)';
+      PX.beginPath(); PX.arc(h.x,h.y,2.6,0,TAU); PX.fill();
+      daughters.splice(i,1);
+    }
+  }
+}
+/* beating orb */
+function drawHeartBody(x,y,scale,ph,hot,shock){
+  hot=hot||0;
+  shock=shock||0;
+  const amp=heartAmp(ph);
+  const R=(15+amp*8)*scale;
+  let g=X.createRadialGradient(x,y,0,x,y,R*3.4);
+  g.addColorStop(0,'rgba(255,50,30,'+(0.30+amp*0.32)+')');
+  g.addColorStop(0.45,'rgba(200,15,15,'+(0.10+amp*0.12)+')');
+  g.addColorStop(1,'rgba(255,0,0,0)');
+  X.fillStyle=g; X.beginPath(); X.arc(x,y,R*3.4,0,TAU); X.fill();
+  let bg=X.createRadialGradient(x-R*0.3,y-R*0.3,R*0.1,x,y,R);
+  bg.addColorStop(0,'rgba(230,60,45,0.98)');
+  bg.addColorStop(0.55,'rgba(160,15,16,0.97)');
+  bg.addColorStop(1,'rgba(95,8,12,0.95)');
+  X.fillStyle=bg; X.beginPath(); X.arc(x,y,R,0,TAU); X.fill();
+  X.strokeStyle='rgba(255,90,70,'+(0.20+amp*0.4)+')'; X.lineWidth=1;
+  X.beginPath(); X.arc(x,y,R,0,TAU); X.stroke();
+  /* ember core flaring on the beat — fevered near the turning */
+  X.fillStyle='rgba(255,'+(110+Math.floor((amp+hot*0.6)*145))+','+(60+Math.floor(hot*40))+','+Math.min(1,0.45+amp*0.5+hot*0.25)+')';
+  X.beginPath(); X.arc(x,y,R*0.34*(0.8+amp*0.6+hot*0.3),0,TAU); X.fill();
+  /* glint */
+  X.fillStyle='rgba(255,190,170,'+(0.18+amp*0.2)+')';
+  X.beginPath(); X.ellipse(x-R*0.34,y-R*0.4,R*0.22,R*0.13,-0.6,0,TAU); X.fill();
+  if(shock>0.02){
+    X.strokeStyle='rgba(255,185,90,'+(0.72*shock)+')';X.lineWidth=0.8+1.8*shock;
+    X.beginPath();X.arc(x,y,R*(1.15+shock*0.5),-1.2+shock,1.9+shock);X.stroke();
+  }
+}
+function drawHeart(hx,hy){
+  for(const r of heart.rings){
+    X.strokeStyle='rgba(255,45,35,'+(0.45*r.a)+')'; X.lineWidth=1.3*r.a+0.3;
+    X.beginPath(); X.arc(hx,hy,r.r,0,TAU); X.stroke();
+  }
+  drawLawSkirt(hx,hy,1.05,heart.skirt,1);
+  drawHeartBody(hx,hy,1.05,0,bondAlone*0.8,heart.shock); /* fevered in hermetic solitude */
+  for(const h of daughters){drawLawSkirt(h.x,h.y,0.42,h.skirt,0.75);drawHeartBody(h.x,h.y,0.36,h.ph,h.hot,h.shock);}
+}
+
+/* ============ LOVE ============ */
+const love={x:0,y:0,init:false,gazeA:0,gazeTarget:0,hitVx:0,hitVy:0,shock:0,stun:0,skirt:[]};
+/* GREEN·BLUE is the holiest of the crossings, so what green gathers is not
+   plain law but ICE — law already cooled by being seen. Her skirt is the
+   contact surface itself, worn. She does not take it from the lattice: she
+   makes it, out of the sight she spends on the temple. */
+function drawLoveSkirt(x,y,scale,skirt,bright){
+  if(!skirt||!skirt.length)return;
+  const b=bright==null?1:bright;
+  const pts=[];
+  for(const n of skirt){
+    const a=n.a+tick*n.sp, rx=(19+n.ring*10)*scale, ry=(7+n.ring*4.5)*scale;
+    pts.push({n,x:x+Math.cos(a)*rx,y:y+(12+n.ring*5.5)*scale+Math.sin(a)*ry,a});
+  }
+  X.save(); X.lineWidth=Math.max(0.42,0.66*scale); X.lineCap='round';
+  /* The dress is graded by depth. Close to her body the law is still nearly
+     pure BLUE — dense, dark, barely touched. Further out it has been longer in
+     her light, and thins toward pale cyan at the hem. The gradient IS the
+     crossing: you can see how far GREEN has gotten into BLUE by how light it
+     has become. Nothing here is decorative; the hue is the reading. */
+  for(let ring=0;ring<3;ring++){
+    const row=pts.filter(p=>p.n.ring===ring).sort((c,d)=>c.a-d.a);
+    if(row.length>1){
+      const t=ring/2;
+      const rr=Math.floor(lerp(28,150,t)), gg=Math.floor(lerp(96,242,t)), bb=Math.floor(lerp(235,246,t));
+      X.strokeStyle='rgba('+rr+','+gg+','+bb+','+(0.18+0.18*b)+')';
+      X.beginPath(); X.moveTo(row[0].x,row[0].y);
+      for(let i=1;i<row.length;i++)X.lineTo(row[i].x,row[i].y);
+      if(row.length>3)X.lineTo(row[0].x,row[0].y);
+      X.stroke();
+    }
+  }
+  for(const p of pts){
+    const t=p.n.ring/2;
+    const rr=Math.floor(lerp(40,168,t)), gg=Math.floor(lerp(118,252,t)), bb=Math.floor(lerp(255,255,t));
+    X.fillStyle='rgba('+rr+','+gg+','+bb+','+(0.66+0.26*b)+')';
+    X.save(); X.translate(p.x,p.y); X.rotate(0.785);
+    const s2=(1.5+0.5*b)*p.n.sz*scale;
+    X.fillRect(-s2,-s2,s2*2,s2*2);
+    X.restore();
+  }
+  X.restore();
+}
+function growLoveSkirt(tx,ty){
+  /* She does not earn the dress by looking. Looking is what MAKES ice — that
+     debt is already paid in glints — but wearing is a different act, and it
+     costs contact. A circle joins her skirt only when her body physically
+     overlaps a settled ice node, and only ice that has had time to become part
+     of a constellation: she gathers from what green and blue have already
+     built together, at the speed they build it. Nothing here is instant. */
+  if(!love.skirt)love.skirt=[];
+  if(love.stun>0)return;
+  if(love.skirt.length>=18)return;
+  if(!every(150,19))return;
+  const REACH=34, REACH2=REACH*REACH;
+  let best=-1,bd=REACH2;
+  for(let i=0;i<temple.pts.length;i++){
+    const p=temple.pts[i];
+    /* only ice, only settled, and only ice with company — a lone frozen node
+       is not yet a constellation, and she takes nothing from an isolated law */
+    if(p.kind!=='ice'||p.set<1||p.rot>0||p.hermetic)continue;
+    const wx=tx+p.x, wy=ty+p.y;
+    const d=(wx-love.x)**2+(wy-love.y)**2;
+    if(d<bd){
+      let kin=0;
+      for(const q of temple.pts){
+        if(q===p||q.kind!=='ice')continue;
+        if((q.x-p.x)**2+(q.y-p.y)**2<820){kin++;if(kin>=2)break;}
+      }
+      if(kin>=2){bd=d;best=i;}
+    }
+  }
+  if(best<0)return;
+  /* the circle leaves the lattice and joins her: taken, not copied */
+  const taken=temple.pts.splice(best,1)[0];
+  const i=love.skirt.length;
+  const ring=i<4?0:i<10?1:2, slot=ring===0?i:ring===1?i-4:i-10;
+  const count=ring===0?4:ring===1?6:8;
+  love.skirt.push({ring,a:slot*TAU/count+rand(-0.16,0.16),
+    sp:(ring===1?-1:1)*rand(0.0022,0.005),sz:rand(0.8,1.2)});
+  addElementImpact('ice',tx+taken.x,ty+taken.y,0.22);
+}
+function updateLove(targets){
+  const [wx,wy]=pLove();
+  if(!love.init){ love.x=wx; love.y=wy; love.init=true; }
+  love.x=lerp(love.x,wx,0.02);
+  love.y=lerp(love.y,wy,0.02);
+  /* GREEN·PINK — she is drawn toward what she watches rot. Looking is not
+     neutral: to behold the turning is already to approach it. The pull acts
+     only while the gyre is actually in her beam, and it is weak enough that
+     her own wander still governs — attraction, not capture. */
+  if(love.stun===0){
+    for(const G of gyres){
+      if(!inGaze(G.x,G.y,0.19))continue;
+      const dx=G.x-love.x, dy=G.y-love.y, d=Math.hypot(dx,dy)||1;
+      if(d<40)continue;
+      const pull=0.030*Math.min(1,G.energy)*Math.min(1,d/260);
+      love.x+=dx/d*pull*2.2; love.y+=dy/d*pull*2.2;
+    }
+  }
+  love.x+=love.hitVx; love.y+=love.hitVy;
+  love.hitVx*=0.92; love.hitVy*=0.92; love.shock*=0.94;
+  if(love.stun>0)love.stun--;
+  if(tick%200===0 && targets.length){
+    /* whom she attends: her own wander — unless the attendant offers a color */
+    let pool=targets.map((p,i)=>({p,hue:[8,225,305][i]!==undefined?[8,225,305][i]:8}));
+    if(golds.length){const g0=golds[Math.floor(Math.random()*golds.length)];pool.push({p:[g0.x,g0.y],hue:50});}
+    for(const h of daughters)if(Math.random()<0.3)pool.push({p:[h.x,h.y],hue:8});
+    let pick=null;
+    if(attendHue!=null){
+      let dg=Math.abs(120-attendHue); dg=Math.min(dg,360-dg);
+      if(dg<40){
+        /* green: she is asked only to rest — the gaze drifts free */
+        love.gazeTarget=love.gazeA+rand(-0.6,0.6);
+      } else {
+        let bw=-1;
+        for(const c of pool){
+          let d2=Math.abs(c.hue-attendHue); d2=Math.min(d2,360-d2);
+          const w=Math.exp(-(d2*d2)/(2*48*48))+0.06*Math.random();
+          if(w>bw){bw=w;pick=c;}
+        }
+      }
+    } else pick=pool[Math.floor(Math.random()*pool.length)];
+    if(pick) love.gazeTarget=Math.atan2(pick.p[1]-love.y,pick.p[0]-love.x);
+  }
+  let d=love.gazeTarget-love.gazeA;
+  while(d>Math.PI)d-=TAU; while(d<-Math.PI)d+=TAU;
+  love.gazeA += d*0.012*lore.sweep + Math.sin(tick*0.007)*0.004;
+  if(tick%2===0 && love.stun===0){
+    const dd=rand(60,Math.max(W,H)*0.55);
+    const aa=love.gazeA+rand(-0.14,0.14);
+    const gx=love.x+Math.cos(aa)*dd, gy=love.y+Math.sin(aa)*dd;
+    if(gx>0&&gx<W&&gy>0&&gy<H){
+      if((gx-tPos.x)**2+(gy-tPos.y)**2<130*130){
+        PX.fillStyle='rgba(90,230,230,0.35)';
+        PX.beginPath(); PX.arc(gx,gy,1.2,0,TAU); PX.fill();
+      } else {
+        PX.fillStyle='rgba(40,160,70,0.05)';
+        PX.beginPath(); PX.arc(gx,gy,1.1,0,TAU); PX.fill();
+      }
+    }
+  }
+}
+function inGaze(px,py,spread){
+  if(love.stun>0)return false; /* struck blind, the world goes unbeheld */
+  const a=Math.atan2(py-love.y,px-love.x);
+  let d=a-love.gazeA; while(d>Math.PI)d-=TAU; while(d<-Math.PI)d+=TAU;
+  return Math.abs(d)<(spread||(0.16+Math.min(attSmooth,12)*0.004));
+}
+let attSmooth=0;
+/* II. TEMPLE→LOVE — the law takes the beam and splits it */
+function updateRefraction(){
+  refractRays.length=0;
+  if(inGaze(tPos.x,tPos.y,0.2)){
+    const base=Math.atan2(tPos.y-love.y,tPos.x-love.x);
+    refractRays.push({a:base+0.35+Math.sin(tick*0.010)*0.05});
+    refractRays.push({a:base-0.30+Math.sin(tick*0.013)*0.05});
+  }
+}
+function inRefract(px,py){
+  if(!refractRays.length)return false;
+  const d2=(px-tPos.x)**2+(py-tPos.y)**2;
+  if(d2<40*40)return false;
+  for(const r of refractRays){
+    const a=Math.atan2(py-tPos.y,px-tPos.x);
+    let d=a-r.a; while(d>Math.PI)d-=TAU; while(d<-Math.PI)d+=TAU;
+    if(Math.abs(d)<0.08)return true;
+  }
+  return false;
+}
+function drawRefraction(){
+  const len=Math.max(W,H)*0.35;
+  for(const r of refractRays){
+    let g=X.createLinearGradient(tPos.x,tPos.y,tPos.x+Math.cos(r.a)*len,tPos.y+Math.sin(r.a)*len);
+    g.addColorStop(0,'rgba(120,240,220,0.10)'); g.addColorStop(1,'rgba(120,240,220,0)');
+    X.fillStyle=g;
+    X.beginPath(); X.moveTo(tPos.x,tPos.y);
+    X.lineTo(tPos.x+Math.cos(r.a-0.07)*len,tPos.y+Math.sin(r.a-0.07)*len);
+    X.lineTo(tPos.x+Math.cos(r.a+0.07)*len,tPos.y+Math.sin(r.a+0.07)*len);
+    X.closePath(); X.fill();
+  }
+}
+function drawLove(){
+  const lx=love.x, ly=love.y;
+  if(love.stun>0){
+    /* the pane of sight, broken. still shards of the beam hang where it
+       shattered, drifting slightly apart; the eye rings hollow, its pupil
+       unmoored; a slit of light crosses her rarely, one frame wide. as she
+       heals, the shards slide home and fuse. a wound — not noise. */
+    if(!love.shatter){
+      love.shatter=[];
+      for(let k=0;k<6;k++){
+        love.shatter.push({a:love.gazeA+(k-2.5)*0.22+rand(-0.06,0.06),
+          len:rand(0.28,0.5)*Math.max(W,H), w:rand(0.02,0.05),
+          drift:rand(-0.0012,0.0012), off:rand(6,26)});
+      }
+    }
+    const st=love.stun/170;
+    /* hollow eye, pupil adrift */
+    X.strokeStyle='rgba(140,255,170,'+(0.45+0.2*Math.sin(tick*0.2))+')'; X.lineWidth=1.2;
+    X.beginPath(); X.arc(lx,ly,6.5,0,TAU); X.stroke();
+    const pa=tick*0.037;
+    X.fillStyle='rgba(190,255,210,0.75)';
+    X.beginPath(); X.arc(lx+Math.cos(pa)*3.2*st,ly+Math.sin(pa*1.7)*3.2*st,1.5,0,TAU); X.fill();
+    /* the shards */
+    for(const sh of love.shatter){
+      sh.a+=sh.drift*st;
+      const heal=1-st;
+      const a2=lerp(sh.a,love.gazeA,heal*heal);
+      const off=sh.off*st;
+      const ox=lx+Math.cos(a2+1.5708)*off, oy=ly+Math.sin(a2+1.5708)*off;
+      let sg2=X.createLinearGradient(ox,oy,ox+Math.cos(a2)*sh.len,oy+Math.sin(a2)*sh.len);
+      sg2.addColorStop(0,'rgba(90,255,130,'+(0.10+0.06*st)+')');
+      sg2.addColorStop(1,'rgba(90,255,130,0)');
+      X.fillStyle=sg2;
+      X.beginPath(); X.moveTo(ox,oy);
+      X.lineTo(ox+Math.cos(a2-sh.w)*sh.len,oy+Math.sin(a2-sh.w)*sh.len);
+      X.lineTo(ox+Math.cos(a2+sh.w)*sh.len,oy+Math.sin(a2+sh.w)*sh.len);
+      X.closePath(); X.fill();
+      /* bright fracture edge */
+      X.strokeStyle='rgba(210,255,225,'+(0.20*st)+')'; X.lineWidth=0.7;
+      X.beginPath(); X.moveTo(ox,oy);
+      X.lineTo(ox+Math.cos(a2)*sh.len*0.85,oy+Math.sin(a2)*sh.len*0.85); X.stroke();
+    }
+    /* the slit */
+    if((tick%46)===0||((tick+17)%61)===0){
+      X.fillStyle='rgba(230,255,240,0.5)';
+      X.fillRect(lx-38,ly-0.7+rand(-8,8),76,1.4);
+    }
+    if(love.stun===1)love.shatter=null; /* fused: sight returns whole */
+    return;
+  }
+  const attR=Math.min(attSmooth,12);
+  drawLoveSkirt(lx,ly,0.74,love.skirt,0.5+0.5*Math.sin(tick*0.04));
+  let g=X.createRadialGradient(lx,ly,0,lx,ly,44+attR*2);
+  g.addColorStop(0,'rgba(80,255,120,'+(0.5+attR*0.02)+')');
+  g.addColorStop(0.5,'rgba(30,200,80,0.16)');
+  g.addColorStop(1,'rgba(0,255,0,0)');
+  X.fillStyle=g; X.beginPath(); X.arc(lx,ly,44+attR*2,0,TAU); X.fill();
+  X.fillStyle='rgba(120,255,150,0.9)';
+  X.beginPath(); X.arc(lx,ly,6+Math.sin(tick*0.06)*1.4+attR*0.25,0,TAU); X.fill();
+  if(love.shock>0.02){
+    const sx=lx-Math.cos(love.gazeA)*18*love.shock,sy=ly-Math.sin(love.gazeA)*18*love.shock;
+    const sg=X.createRadialGradient(sx,sy,0,sx,sy,26+love.shock*36);
+    sg.addColorStop(0,'rgba(185,255,205,'+(0.62*love.shock)+')');sg.addColorStop(1,'rgba(0,255,80,0)');
+    X.fillStyle=sg;X.beginPath();X.arc(sx,sy,26+love.shock*36,0,TAU);X.fill();
+  }
+  const a=love.gazeA,len=Math.max(W,H)*0.6,spread=0.16;
+  let bg=X.createLinearGradient(lx,ly,lx+Math.cos(a)*len,ly+Math.sin(a)*len);
+  bg.addColorStop(0,'rgba(90,255,130,0.13)'); bg.addColorStop(1,'rgba(90,255,130,0)');
+  X.fillStyle=bg;
+  X.beginPath(); X.moveTo(lx,ly);
+  X.lineTo(lx+Math.cos(a-spread)*len,ly+Math.sin(a-spread)*len);
+  X.lineTo(lx+Math.cos(a+spread)*len,ly+Math.sin(a+spread)*len);
+  X.closePath(); X.fill();
+  X.strokeStyle='rgba(180,255,200,0.7)'; X.lineWidth=1;
+  X.beginPath(); X.arc(lx,ly,11,a-0.9,a+0.9); X.stroke();
+}
+
+/* ============ TEMPLE ============ */
+const temple={pts:[],nextAt:0,iceCount:0,shock:0};
+/* Admissibility is a local question — only nearby circles can crowd a seat —
+   so it is answered with a spatial hash rebuilt as the lattice changes rather
+   than by walking every circle of law for every candidate. */
+let templeGrid=new Map(), templeGridN=-1;
+const TCELL=30;
+function templeGridKey(x,y){return ((x/TCELL)|0)+','+((y/TCELL)|0);}
+function rebuildTempleGrid(){
+  templeGrid=new Map();
+  for(const p of temple.pts){
+    const k=templeGridKey(p.x,p.y);
+    let b=templeGrid.get(k); if(!b){b=[];templeGrid.set(k,b);}
+    b.push(p);
+  }
+  templeGridN=temple.pts.length;
+}
+function seatFree(nx,ny,min2){
+  if(templeGridN!==temple.pts.length)rebuildTempleGrid();
+  const cx=(nx/TCELL)|0, cy=(ny/TCELL)|0;
+  for(let gx=cx-1;gx<=cx+1;gx++)for(let gy=cy-1;gy<=cy+1;gy++){
+    const b=templeGrid.get(gx+','+gy);
+    if(!b)continue;
+    for(const p of b) if((p.x-nx)**2+(p.y-ny)**2<min2) return false;
+  }
+  return true;
+}
+function addLawPoint(nx,ny,kind){
+  const p={x:nx,y:ny,set:0,kind:kind||'law',rot:0};
+  temple.pts.push(p);
+  const k=templeGridKey(nx,ny);
+  let b=templeGrid.get(k); if(!b){b=[];templeGrid.set(k,b);}
+  b.push(p); templeGridN=temple.pts.length;
+  return p;
+}
+function updateTemple(tx,ty){
+  temple.shock*=0.89;
+  if(temple.pts.length===0) temple.pts.push({x:0,y:0,set:1,kind:'law',rot:0});
+  if(tick>temple.nextAt && temple.pts.length<700){
+    /* the lattice takes hours, not minutes, to fill a field */
+    temple.nextAt = tick + slow(Math.max(26, 240 - temple.pts.length*0.22));
+    /* Law does not thicken where it already is. Growth prefers the frontier:
+       three candidate parents are drawn and the one furthest from the seat
+       wins, so the lattice reaches instead of piling. Step length varies —
+       rule applied to unlike ground does not produce identical spacing.
+       A blocked direction is not a lost turn: rule persists, trying seats
+       around the parent until one is admissible. */
+    let placed=false;
+    for(let attempt=0;attempt<7&&!placed;attempt++){
+      let base=null,br=-1;
+      for(let k=0;k<3;k++){
+        const c=temple.pts[Math.floor(Math.random()*temple.pts.length)];
+        const r=c.x*c.x+c.y*c.y;
+        if(r>br){br=r;base=c;}
+      }
+      const dir=Math.floor(rand(0,6))*TAU/6+TAU/12+rand(-0.09,0.09);
+      const step=lore.lattice*rand(0.92,1.5);
+      const nx=base.x+Math.cos(dir)*step, ny=base.y+Math.sin(dir)*step;
+      /* a wider exclusion radius: circles of law keep their distance */
+      if(seatFree(nx,ny,150)){ addLawPoint(nx,ny,'law'); placed=true; }
+    }
+  }
+  /* TEMPLE is not a place. Rule makes itself manifest wherever there is ground
+     to bear it, so the law occasionally founds a distant precinct — a lone
+     circle far from the seat, which then grows on its own terms. */
+  if(every(5400,131) && temple.pts.length>40 && temple.pts.length<700){
+    const a=rand(0,TAU), r=rand(210,Math.max(260,Math.min(W,H)*0.42));
+    const nx=Math.cos(a)*r, ny=Math.sin(a)*r;
+    if(tx+nx>10&&tx+nx<W-10&&ty+ny>10&&ty+ny<H-10&&seatFree(nx,ny,150))
+      addLawPoint(nx,ny,'law');
+  }
+  if(every(150,7)){
+    const iced=temple.pts.filter(p=>p.kind==='ice');
+    /* ice spreads slowly and never claims the whole lattice — deep blue must survive */
+    if(iced.length < temple.pts.length*0.4){
+      for(const ip of iced){
+        if(Math.random()<0.04){
+          for(const p of temple.pts){
+            if(p.kind==='law'&&p.rot===0){
+              const d=(p.x-ip.x)**2+(p.y-ip.y)**2;
+              if(d<820){ p.kind='ice'; emitGlints(tx+p.x,ty+p.y,tx,ty,2); break; }
+            }
+          }
+          break;
+        }
+      }
+    }
+  }
+  temple.iceCount=0;
+  for(let i=temple.pts.length-1;i>=0;i--){
+    const p=temple.pts[i];
+    if(p.kind==='ice') temple.iceCount++;
+    if(p.set<1)p.set+=0.02;
+    if(p.rot>0){ p.rot+=0.015; if(p.rot>=1) temple.pts.splice(i,1); }
+  }
+}
+function chooseKeptSeat(goddess){
+  const lo=goddess?34:18, hi=goddess?118:82;
+  let cands=temple.pts.filter(p=>{
+    const r=Math.hypot(p.x,p.y);
+    if((p.kind!=='law'&&p.kind!=='ice')||p.rot>0||p.hermetic||p.set<0.72||r<lo||r>hi)return false;
+    for(const e of embers)if((e.x-p.x)**2+(e.y-p.y)**2<(goddess?28:20)**2)return false;
+    return true;
+  });
+  if(cands.length){const p=cands[Math.floor(Math.random()*cands.length)];return {x:p.x,y:p.y};}
+  const a=rand(0,TAU),r=rand(lo,hi);return {x:Math.cos(a)*r,y:Math.sin(a)*r};
+}
+function makeKeptFire(){
+  /* no red is appointed a goddess. every kept fire begins plain,
+     and earns the dress by gathering nine circles of law. */
+  const p=chooseKeptSeat(false);
+  return {x:p.x,y:p.y,ph:rand(0,TAU),kind:'ember',scale:rand(0.88,1.12),skirt:[]};
+}
+function drawLawGoddess(e,pul){
+  const s=e.scale||1;if(!e.skirt)e.skirt=[];
+  /* The dress is literally gathered law: orbiting blue circles whose faint
+     links form a constellation around a small red heart. */
+  drawLawSkirt(e.x,e.y-3*s,0.62*s,e.skirt,pul);
+  drawHeartBody(e.x,e.y-7*s,0.27*s,e.ph,0,0);
+}
+function drawTemple(tx,ty){
+  X.save(); X.translate(tx,ty);
+  X.lineWidth=0.6;
+  const n=temple.pts.length;
+  /* Links are found through the lattice's own maintained spatial hash rather
+     than by testing every pair, and the hash is not rebuilt each frame — rule
+     is local and persistent, so the structure that expresses it should be too.
+
+     A circle binds only to its nearest few neighbours. Law that connected to
+     everything within reach would draw itself as a solid mat, which is the
+     opposite of what a lattice is: structure is visible relation, and relation
+     that omits nothing is not structure. Six is the hexagonal maximum. */
+  const LINK2=820, MAXLINKS=6;
+  if(templeGridN!==n)rebuildTempleGrid();
+  const near=[];
+  for(let i=0;i<n;i++){
+    const a=temple.pts[i];
+    const cx=(a.x/TCELL)|0, cy=(a.y/TCELL)|0;
+    near.length=0;
+    for(let gx=cx-1;gx<=cx+1;gx++){
+      for(let gy=cy-1;gy<=cy+1;gy++){
+        const bucket=templeGrid.get(gx+','+gy);
+        if(!bucket)continue;
+        for(let jj=0;jj<bucket.length;jj++){
+          const b=bucket[jj];
+          if(b===a)continue;
+          const dx=a.x-b.x, dy=a.y-b.y, d2=dx*dx+dy*dy;
+          if(d2<LINK2)near.push(d2,b);
+        }
+      }
+    }
+    if(!near.length)continue;
+    /* keep the nearest MAXLINKS, and draw each pair once by position order */
+    const cnt=near.length>>1;
+    if(cnt>MAXLINKS){
+      for(let p=0;p<MAXLINKS;p++){
+        let bi=p;
+        for(let q=p+1;q<cnt;q++) if(near[q*2]<near[bi*2]) bi=q;
+        if(bi!==p){
+          const d0=near[p*2],o0=near[p*2+1];
+          near[p*2]=near[bi*2];near[p*2+1]=near[bi*2+1];
+          near[bi*2]=d0;near[bi*2+1]=o0;
+        }
+      }
+    }
+    const lim=Math.min(cnt,MAXLINKS);
+    for(let p=0;p<lim;p++){
+      const b=near[p*2+1];
+      if(!(b.x>a.x||(b.x===a.x&&b.y>a.y)))continue;
+      const ice=(a.kind==='ice'&&b.kind==='ice');
+      X.strokeStyle= ice?'rgba(130,255,255,0.42)':'rgba(50,85,255,'+(0.30*Math.min(a.set,b.set))+')';
+      X.beginPath(); X.moveTo(a.x,a.y); X.lineTo(b.x,b.y); X.stroke();
+    }
+  }
+  for(const p of temple.pts){
+    const s=p.set;
+    if(p.kind==='ice'){
+      const pul=0.6+0.4*Math.sin(tick*0.04+p.x);
+      X.save(); X.translate(p.x,p.y); X.rotate(0.785);
+      X.fillStyle='rgba(160,255,255,'+(0.9*pul)+')';
+      X.fillRect(-1.9,-1.9,3.8,3.8);
+      X.restore();
+    } else {
+      const rot=p.rot;
+      X.fillStyle= rot>0
+        ? 'rgba('+Math.floor(lerp(90,230,rot))+','+Math.floor(lerp(130,0,rot))+',255,'+(0.85*(1-rot*0.4))+')'
+        : 'rgba(95,135,255,'+(0.85*s)+')';
+      X.beginPath(); X.arc(p.x,p.y,1.5+s*0.7,0,TAU); X.fill();
+      if(s<1){
+        X.strokeStyle='rgba(160,190,255,'+(0.6*(1-s))+')';
+        X.beginPath(); X.arc(p.x,p.y,6*(1-s)+2,0,TAU); X.stroke();
+      }
+    }
+  }
+  X.fillStyle='rgba(205,225,255,0.9)';
+  X.beginPath(); X.arc(0,0,2.4,0,TAU); X.fill();
+  if(temple.shock>0.02){
+    const sg=X.createRadialGradient(0,0,0,0,0,34+temple.shock*38);
+    sg.addColorStop(0,'rgba(145,220,255,'+(0.55*temple.shock)+')');sg.addColorStop(1,'rgba(40,80,255,0)');
+    X.fillStyle=sg;X.beginPath();X.arc(0,0,34+temple.shock*38,0,TAU);X.fill();
+  }
+  /* I. embers: fire the law holds */
+  for(const e of embers){
+    if(e.enthrone){
+      const dx=e.enthrone.x-e.x,dy=e.enthrone.y-e.y;
+      e.x+=dx*0.012;e.y+=dy*0.012;
+      if(dx*dx+dy*dy<0.36)delete e.enthrone;
+    }
+    const pul=0.55+0.45*Math.sin(tick*0.05+e.ph);
+    if(e.kind==='goddess'){drawLawGoddess(e,pul);continue;}
+    if(e.kind==='ember'&&e.skirt&&e.skirt.length){
+      /* a plain kept fire, mid-gathering: the dress half-made */
+      drawLawSkirt(e.x,e.y+2,0.4,e.skirt,pul*0.8);
+    }
+    if(e.kind==='star'){
+      /* kept light: a star the law holds — gold in the crystal */
+      let kg=X.createRadialGradient(e.x,e.y,0,e.x,e.y,12);
+      kg.addColorStop(0,'rgba(255,238,140,'+(0.5*pul)+')');
+      kg.addColorStop(1,'rgba(255,200,0,0)');
+      X.fillStyle=kg; X.beginPath(); X.arc(e.x,e.y,12,0,TAU); X.fill();
+      X.save(); X.translate(e.x,e.y); X.rotate(0.785);
+      X.fillStyle='rgba(255,244,'+(150+Math.floor(pul*80))+','+(0.8*pul+0.15)+')';
+      X.fillRect(-2.1,-2.1,4.2,4.2); X.restore();
+      X.save(); X.globalCompositeOperation='lighter';
+      let khg=X.createRadialGradient(e.x,e.y,0,e.x,e.y,7.5);
+      khg.addColorStop(0,'rgba(255,248,200,'+(0.30*pul)+')');
+      khg.addColorStop(1,'rgba(255,214,110,0)');
+      X.fillStyle=khg; X.beginPath(); X.arc(e.x,e.y,7.5,0,TAU); X.fill();
+      X.restore();
+      continue;
+    }
+    let eg=X.createRadialGradient(e.x,e.y,0,e.x,e.y,11);
+    eg.addColorStop(0,'rgba(255,90,40,'+((0.45+0.3*bondSeen)*pul)+')');
+    eg.addColorStop(1,'rgba(255,40,0,0)');
+    X.fillStyle=eg; X.beginPath(); X.arc(e.x,e.y,11,0,TAU); X.fill();
+    X.save(); X.translate(e.x,e.y); X.rotate(0.785);
+    X.fillStyle='rgba(255,'+(110+Math.floor(pul*100))+',60,'+(0.85*pul+0.1)+')';
+    X.fillRect(-2,-2,4,4);
+    X.restore();
+  }
+  X.restore();
+}
+
+/* ============ POWER ============ */
+function makeGyre(x,y,scale,root){
+  return {x,y,scale,root,orbiters:[],out:[],energy:1,shock:0,age:0,life:root?1e9:rand(2200,4200)};
+}
+const gyres=[ makeGyre(0,0,1,true) ];
+function updateGyres(px,py){
+  gyres[0].x=px; gyres[0].y=py;
+  if(gyres[0].root)gyres[0].scale=lore.gyreScale;
+  for(let gi=gyres.length-1;gi>=0;gi--){
+    const G=gyres[gi]; G.age++;G.shock=(G.shock||0)*0.90;
+    /* how much law is actually near enough to bind this vortex. counted, not
+       assumed: constraint is proportional to the rule present on the ground. */
+    if(tick%24===0){
+      /* counted by sample, not by census: how much rule is present near the
+         turning is a proportion, and a proportion does not need every circle
+         inspected to be known. */
+      const pts=temple.pts, L=pts.length, stride=L>120?3:1;
+      let n=0;
+      for(let k=(tick/24|0)%stride;k<L;k+=stride){
+        const p=pts[k];
+        const d=(tPos.x+p.x-G.x)**2+(tPos.y+p.y-G.y)**2;
+        if(d<(210*G.scale)**2)n++;
+      }
+      n*=stride;
+      G.lawNear=n;
+      G.lawGrip=lerp(G.lawGrip||0,Math.min(1,n/55),0.25);
+    }
+    if(G.lawGrip>0.35){
+      /* bounded by rule, the turning cannot run away with itself. standing is
+         local: a lattice elsewhere does not govern what turns here. */
+      const ceil=2.2-1.0*G.lawGrip;
+      if(G.energy>ceil)G.energy=lerp(G.energy,ceil,0.02);
+    }
+    const cap=Math.floor(40*G.scale);
+    while(G.orbiters.length<cap)
+      G.orbiters.push({
+        a:rand(0,TAU),r:rand(18,100*G.scale),sp:rand(0.004,0.014),
+        w:rand(0.6,1.6),hue:Math.random(),px:0,py:0,fresh:true,trail:[],
+        silkPhase:rand(0,TAU),silkSpeed:rand(0.018,0.035),silkWidth:rand(0.72,1.08)
+      });
+    G.energy=lerp(G.energy,1,0.002);
+    /* IV. POWER→LOVE — the unwriting: rot slowly erases the record where it walks */
+    if(tick%3===0){
+      PX.globalCompositeOperation='destination-out';
+      const eg=PX.createRadialGradient(G.x,G.y,0,G.x,G.y,60*G.scale);
+      eg.addColorStop(0,'rgba(0,0,0,0.012)');
+      eg.addColorStop(1,'rgba(0,0,0,0)');
+      PX.fillStyle=eg; PX.beginPath(); PX.arc(G.x,G.y,60*G.scale,0,TAU); PX.fill();
+      PX.globalCompositeOperation='source-over';
+    }
+    if(!G.root){
+      G.x+=Math.sin(tick*0.001+G.age*0.0007)*0.15;
+      G.y+=Math.cos(tick*0.0013+G.age*0.0005)*0.12;
+      if(G.age>G.life){
+        PX.fillStyle='rgba(70,10,60,0.4)';
+        PX.beginPath(); PX.arc(G.x,G.y,5,0,TAU); PX.fill();
+        gyres.splice(gi,1); continue;
+      }
+    }
+    for(const o of G.orbiters){
+      /* Old saves do not contain visual silk state; seed it lazily without
+         touching the orbiter's position, velocity, blessing, or lifetime. */
+      if(o.silkPhase===undefined){
+        o.silkPhase=rand(0,TAU);
+        o.silkSpeed=rand(0.018,0.035);
+        o.silkWidth=rand(0.72,1.08);
+      }
+      if(!o.trail)o.trail=[];
+      o.silkPhase+=o.silkSpeed;
+      const lx=Math.cos(o.a)*o.r,ly=Math.sin(o.a)*o.r;
+      const nx=G.x+lx, ny=G.y+ly;
+      if(o.fresh)o.trail.length=0;
+      if(!o.fresh&&!o.skipSilk){
+        const t=Math.max(0,(120*G.scale-o.r)/(113*G.scale));
+        /* Quiet Silk is the world-space circle left behind. Its original sparse
+           gate, rim suppression, colors and narrow width remain intact. */
+        const rimPinned=o.blessed>0.1 && o.r>135*G.scale;
+        const silkOpen=Math.sin(o.silkPhase)>0.82;
+        if(!rimPinned && silkOpen){
+          if(o.blessed>0.1)
+            SX.strokeStyle='rgba(160,255,200,'+(0.24*o.blessed)+')';
+          else{
+            const rr=Math.floor(lerp(180,255,o.hue)), bb=Math.floor(lerp(255,190,o.hue));
+            SX.strokeStyle='rgba('+rr+','+Math.floor(t*50)+','+bb+','+(0.10+t*0.28)+')';
+          }
+          SX.lineWidth=(0.45+t*1.35)*G.scale*o.silkWidth;
+          SX.lineCap='round';
+          SX.beginPath(); SX.moveTo(o.px,o.py); SX.lineTo(nx,ny); SX.stroke();
+        }
+      }
+      const depth=Math.max(0,(120*G.scale-o.r)/(113*G.scale));
+      o.trail.push({x:lx,y:ly,depth,hue:o.hue,blessed:o.blessed||0});
+      if(o.trail.length>36)o.trail.shift();
+      o.px=nx;o.py=ny;o.fresh=false;o.skipSilk=false;
+      if(inGaze(nx,ny)){ o.r+=0.4; o.blessed=1; }
+      else if(inRefract(nx,ny)){ o.r+=0.16; o.blessed=Math.max(o.blessed||0,0.55); }
+      else if(o.blessed) o.blessed*=0.95;
+      o.a += (3.2/(o.r+24))*G.energy*(1+0.15*Math.sin(tick*0.01+o.hue*9));
+      o.r -= 0.05*o.w*G.energy*(1+0.3*Math.sin(tick*0.008+o.a));
+      /* TEMPLE·POWER — 💙🩷. Law acting on rot is not violence and not
+         devouring; it is CONSTRAINT. Within reach of the lattice the vortex
+         may still turn, but it may not turn just anywhere: its radii are
+         pulled onto discrete shells spaced by the lattice constant, and its
+         drift inward is slowed. Rule does not stop the turning. It tells the
+         turning where it is allowed to be. */
+      if(G.lawGrip>0.02){
+        const q=lore.lattice*1.6;
+        const shell=Math.round(o.r/q)*q;
+        o.r=lerp(o.r,shell,0.05*G.lawGrip);
+        o.a+=0.0006*G.lawGrip*Math.sign(Math.sin(o.a*3));
+      }
+      const rmax=122*G.scale;
+      /* no rim-pinning: pushed past the edge, a thread is re-sown inward */
+      if(o.r>rmax){ o.r=rand(58,95)*G.scale; o.a=rand(0,TAU); o.blessed=0; o.fresh=true; }
+      if(o.r<7*G.scale){
+        o.r=rand(78,105)*G.scale; const ea=rand(0,TAU); o.a=ea; o.hue=Math.random(); o.fresh=true;
+        G.out.push({x:G.x+Math.cos(ea)*8,y:G.y+Math.sin(ea)*8,
+          vx:Math.cos(ea)*rand(0.7,1.7),vy:Math.sin(ea)*rand(0.7,1.7),age:0,life:rand(80,180)});
+      }
+    }
+    for(let i=G.out.length-1;i>=0;i--){
+      const q=G.out[i]; q.age++;
+      q.x+=q.vx; q.y+=q.vy; q.vx*=0.985; q.vy*=0.985;
+      if(q.age>q.life) G.out.splice(i,1);
+    }
+    if(G.root && G.energy>1.9 && gyres.length<4){
+      const ba=rand(0,TAU);
+      gyres.push(makeGyre(G.x+Math.cos(ba)*rand(160,260), G.y+Math.sin(ba)*rand(140,220), rand(0.4,0.6), false));
+      G.energy=1.2;
+    }
+  }
+}
+function drawGyreTrails(){
+  /* the vortex at full voice: additive ribbons of true motion, riding above
+     the quiet silk. the silk is texture; THIS is the fire.
+     illumination is local: green relights only the portions it actually
+     crosses, never an entire thread merely because its head is beheld. */
+  X.save(); X.globalCompositeOperation='lighter'; X.lineCap='round';
+  for(const G of gyres){
+    const pf=Math.min(1,G.petrify||0);
+    for(const o of G.orbiters){
+      const h=o.trail||[],n=h.length;if(n<2)continue;
+      for(let i=1;i<n;i++){
+        const p=h[i-1],q=h[i],age=i/(n-1);
+        const x1=G.x+p.x,y1=G.y+p.y,x2=G.x+q.x,y2=G.y+q.y;
+        const mx=(x1+x2)*0.5,my=(y1+y2)*0.5;
+        const litSegment=(p.blessed>0.5)||(q.blessed>0.5)||inGaze(mx,my)||inRefract(mx,my);
+        const width=(0.6+q.depth*1.9)*G.scale*(0.62+age*0.38);
+        if(pf>0){
+          /* judged by the goddess: color drains toward stone */
+          X.strokeStyle='rgba('+Math.floor(lerp(210,165,pf))+','+Math.floor(lerp(60,190,pf))+','+Math.floor(lerp(235,225,pf))+','+((0.08+age*0.42)*(1-0.3*pf))+')';
+          X.lineWidth=width;
+        } else if(litSegment){
+          /* beheld: mint on the pink, held short of white */
+          X.strokeStyle='rgba(160,255,200,'+(0.10+age*0.52)+')';
+          X.lineWidth=width*1.2;
+        }else{
+          const rr=Math.floor(lerp(180,255,q.hue)),bb=Math.floor(lerp(255,190,q.hue));
+          X.strokeStyle='rgba('+rr+','+Math.floor(q.depth*50)+','+bb+','+(0.07+age*0.48)+')';
+          X.lineWidth=width;
+        }
+        X.beginPath();X.moveTo(x1,y1);X.lineTo(x2,y2);X.stroke();
+      }
+    }
+  }
+  X.restore();
+}
+function drawGyres(){
+  drawGyreTrails();
+  for(const G of gyres){
+    /* 💙🩷 made visible: the shells law has imposed, drawn faintly in blue
+       over the pink. this is the only place blue is permitted to draw a
+       perfect circle — rule looks like this. */
+    if(G.lawGrip>0.12){
+      X.save();
+      const q=lore.lattice*1.6, a0=0.11*G.lawGrip;
+      X.lineWidth=0.5;
+      for(let r=q;r<=122*G.scale;r+=q){
+        X.strokeStyle='rgba(70,140,255,'+(a0*(1-r/(150*G.scale)))+')';
+        X.beginPath();X.arc(G.x,G.y,r,0,TAU);X.stroke();
+      }
+      X.restore();
+    }
+  }
+  for(const G of gyres){
+    const fade=G.root?1:Math.min(1,(G.life-G.age)/300,G.age/60);
+    const th=(0.6+0.4*Math.sin(tick*0.09))*Math.min(G.energy,1.6)*fade;
+    const cr=(15+G.energy*4+(G.shock||0)*16)*G.scale;
+    let g=X.createRadialGradient(G.x,G.y,0,G.x,G.y,cr);
+    g.addColorStop(0,'rgba(255,10,235,'+Math.min(0.98,0.8*th+(G.shock||0)*0.35)+')');
+    g.addColorStop(0.6,'rgba(150,0,180,0.32)');
+    g.addColorStop(1,'rgba(255,0,255,0)');
+    X.fillStyle=g; X.beginPath(); X.arc(G.x,G.y,cr,0,TAU); X.fill();
+    for(const q of G.out){
+      const a=(1-q.age/q.life)*fade;
+      X.fillStyle='rgba(255,'+Math.floor(120*a)+',250,'+(0.7*a)+')';
+      X.beginPath(); X.arc(q.x,q.y,1.7*a+0.4,0,TAU); X.fill();
+    }
+  }
+}
+
+/* ============ contacts, gold, stars ============ */
+const golds=[], ferments=[], stars=[], fallers=[], starBursts=[];
+const embers=[]; /* TEMPLE→HEART: fire kept in the law */
+const elementFragments=[],elementFlashes=[]; /* a star's answer from each element */
+function addElementImpact(kind,x,y,power){
+  power=Math.max(0.18,power==null?1:power);
+  elementFlashes.push({kind,x,y,age:0,life:rand(24,44),power});
+  const base=kind==='goddess'?34:kind==='temple'?18:kind==='power'?24:kind==='star'?26:kind==='ice'?6:20;
+  const n=Math.max(4,Math.floor(base*power));
+  for(let i=0;i<n;i++){
+    let an=rand(0,TAU),sp=rand(0.7,4.8)*(0.55+power*0.55);
+    if(kind==='love')an=love.gazeA+Math.PI+rand(-1.0,1.0);
+    let vx=Math.cos(an)*sp,vy=Math.sin(an)*sp;
+    if(kind==='power'){
+      const tang=rand(-1,1)*sp*0.95;vx= Math.cos(an)*sp*0.45-Math.sin(an)*tang;vy=Math.sin(an)*sp*0.45+Math.cos(an)*tang;
+    }
+    elementFragments.push({kind,sub:kind==='goddess'?(i%3===0?'heart':'temple'):kind,x,y,px:x,py:y,vx,vy,
+      age:0,life:rand(34,88),sz:rand(0.7,2.1)*Math.sqrt(power),spin:kind==='power'?rand(-0.045,0.045):0,rot:rand(0,TAU)});
+  }
+  if(elementFragments.length>1400)elementFragments.splice(0,elementFragments.length-1400);
+}
+function drawElementImpacts(){
+  X.save();X.globalCompositeOperation='lighter';X.lineCap='round';
+  for(let i=elementFlashes.length-1;i>=0;i--){
+    const f=elementFlashes[i];f.age++;if(f.age>f.life){elementFlashes.splice(i,1);continue;}
+    const q=f.age/f.life,a=(1-q)*(1-q),r=(8+q*54)*Math.sqrt(f.power);
+    const rgb=f.kind==='heart'?'255,58,34':f.kind==='love'?'70,255,125':f.kind==='temple'?'75,125,255':f.kind==='power'?'245,35,235':f.kind==='star'?'255,238,140':f.kind==='ice'?'170,245,255':'170,115,210';
+    const g=X.createRadialGradient(f.x,f.y,0,f.x,f.y,r);g.addColorStop(0,'rgba('+rgb+','+(0.52*a)+')');g.addColorStop(1,'rgba('+rgb+',0)');
+    X.fillStyle=g;X.beginPath();X.arc(f.x,f.y,r,0,TAU);X.fill();
+  }
+  for(let i=elementFragments.length-1;i>=0;i--){
+    const p=elementFragments[i];p.age++;if(p.age>p.life){elementFragments.splice(i,1);continue;}
+    p.px=p.x;p.py=p.y;
+    if(p.kind==='power'){
+      const c=Math.cos(p.spin),s=Math.sin(p.spin),vx=p.vx*c-p.vy*s,vy=p.vx*s+p.vy*c;p.vx=vx;p.vy=vy;
+    }
+    p.x+=p.vx;p.y+=p.vy;p.vx*=p.kind==='love'?0.972:0.982;p.vy*=p.kind==='love'?0.972:0.982;
+    if(p.sub==='heart'||p.sub==='temple')p.vy+=0.012;
+    const a=1-p.age/p.life;
+    if(p.sub==='heart'){
+      X.strokeStyle='rgba(255,76,38,'+(0.72*a)+')';X.lineWidth=p.sz*(0.45+a);
+      X.beginPath();X.moveTo(p.px,p.py);X.lineTo(p.x,p.y);X.stroke();
+      X.fillStyle='rgba(255,178,80,'+(0.66*a)+')';X.beginPath();X.arc(p.x,p.y,p.sz*0.48,0,TAU);X.fill();
+    }else if(p.sub==='love'){
+      X.strokeStyle='rgba(100,255,155,'+(0.62*a)+')';X.lineWidth=p.sz*(0.6+a*0.8);
+      X.beginPath();X.moveTo(p.px,p.py);X.lineTo(p.x,p.y);X.stroke();
+      X.fillStyle='rgba(190,255,215,'+(0.55*a)+')';X.beginPath();X.arc(p.x,p.y,p.sz*0.72,0,TAU);X.fill();
+    }else if(p.sub==='temple'){
+      X.save();X.translate(p.x,p.y);X.rotate(p.rot+p.age*0.06);
+      X.fillStyle='rgba(90,145,255,'+(0.78*a)+')';X.fillRect(-p.sz,-p.sz,p.sz*2,p.sz*2);X.restore();
+    }else if(p.sub==='star'){
+      X.strokeStyle='rgba(255,240,150,'+(0.75*a)+')';X.lineWidth=p.sz*(0.4+a*0.8);
+      X.beginPath();X.moveTo(p.px,p.py);X.lineTo(p.x,p.y);X.stroke();
+      X.fillStyle='rgba(255,250,200,'+(0.7*a)+')';X.beginPath();X.arc(p.x,p.y,p.sz*0.5,0,TAU);X.fill();
+    }else if(p.sub==='ice'){
+      X.fillStyle='rgba(200,250,255,'+(0.8*a)+')';X.beginPath();X.arc(p.x,p.y,p.sz*0.55,0,TAU);X.fill();
+    }else{
+      X.strokeStyle='rgba(245,48,235,'+(0.68*a)+')';X.lineWidth=p.sz*(0.45+a);
+      X.beginPath();X.moveTo(p.px,p.py);X.quadraticCurveTo((p.px+p.x)*0.5+p.vy*1.5,(p.py+p.y)*0.5-p.vx*1.5,p.x,p.y);X.stroke();
+    }
+  }
+  X.restore();
+}
+const tPos={x:0,y:0};
+let refractRays=[]; /* TEMPLE→LOVE: the law splitting the gaze */
+let attendance=0;   /* HEART→LOVE: sparks in her orbit */
+/* Legacy save-field names retained: bondSeen is now TEMPLE·HEART core
+   intensity; bondAlone is HEART·TEMPLE hermetic-vessel intensity. Neither is
+   selected by LOVE's presence or absence. */
+let bondSeen=0, bondAlone=0;
+let meetT=0;
+const seamBursts=[]; /* ordered HEART↔TEMPLE contact made visible */
+function addSeamBurst(x,y,order,strength){
+  strength=strength==null?1:strength;
+  const reach=(order==='HT'?rand(54,68):rand(46,61))*strength;
+  seamBursts.push({x,y,order,age:0,life:rand(68,90),reach,ph:rand(0,TAU)});
+}
+function drawSeamBursts(){
+  for(let i=seamBursts.length-1;i>=0;i--){
+    const b=seamBursts[i]; b.age++;
+    if(b.age>b.life){seamBursts.splice(i,1);continue;}
+    const q=b.age/b.life, a=(1-q)*(0.72+0.28*Math.sin(b.age*0.22+b.ph));
+    const r=9+q*b.reach;
+    const from=b.order==='HT'?'255,62,42':'70,115,255';
+    const to=b.order==='HT'?'70,115,255':'255,62,42';
+    let g=X.createRadialGradient(b.x,b.y,0,b.x,b.y,r);
+    g.addColorStop(0,'rgba('+from+','+(0.44*a)+')');
+    g.addColorStop(0.48,'rgba('+to+','+(0.22*a)+')');
+    g.addColorStop(1,'rgba('+to+',0)');
+    X.fillStyle=g; X.beginPath(); X.arc(b.x,b.y,r,0,TAU); X.fill();
+    X.strokeStyle='rgba('+to+','+(0.65*a)+')'; X.lineWidth=1.2+a;
+    X.beginPath(); X.arc(b.x,b.y,r*0.58,0,TAU); X.stroke();
+  }
+}
+function gatherLawForHeart(owner,hx,hy,tx,ty,max){
+  if(!owner.skirt)owner.skirt=[];
+  if(owner.skirt.length>=max||temple.pts.length<12)return;
+  let best=-1,bd=78*78,bestIce=false;
+  for(let i=0;i<temple.pts.length;i++){
+    const p=temple.pts[i];
+    if(p.rot>0||p.hermetic||p.set<0.72)continue;
+    /* Fire may take ice as well as law. A kept fire sits inside a lattice that
+       green has often frozen solid, and a body that warm does not sit politely
+       beside ice: taking it thaws it. Refusing ice made the dress impossible
+       wherever GREEN had been thorough, which is exactly where kept fires are.
+       Plain law is still preferred — it comes free — but ice will serve. */
+    if(p.kind!=='law'&&p.kind!=='ice')continue;
+    const d=(tx+p.x-hx)**2+(ty+p.y-hy)**2;
+    if(d>=bd)continue;
+    /* prefer law at equal-ish distance: ice costs a thaw */
+    const isIce=(p.kind==='ice');
+    if(isIce&&d>bd*0.64)continue;
+    bd=d;best=i;bestIce=isIce;
+  }
+  if(best>=0){
+    const p=temple.pts.splice(best,1)[0];
+    owner.skirt.push(makeLawSkirtNode(owner.skirt.length,p));
+    addSeamBurst(tx+p.x,ty+p.y,'TH',0.44);
+    if(bestIce){
+      /* the thaw is paid for in the open: heat returns where cold was */
+      addElementImpact('heart',tx+p.x,ty+p.y,0.18);
+    }
+  }
+}
+function contacts(hx,hy,tx,ty){
+  const lx=love.x, ly=love.y;
+  /* HEART may wear TEMPLE: nearby circles detach from the lattice and gather
+     into layered, orbiting constellations rather than a symbolic triangle. */
+  if(every(110,3)){
+    gatherLawForHeart(heart,hx,hy,tx,ty,18);
+    for(const h of daughters)if((tick+h.ph)%slow(220)===0)gatherLawForHeart(h,h.x,h.y,tx,ty,12);
+    /* A kept fire sits INSIDE the lattice, so it is always in reach of law and
+       gathers on its own clock. This is the slow road to a dressed goddess and
+       it must actually be walkable: nine circles at this cadence is a long
+       patience, but it is a patience that ends. */
+    for(const e of embers){
+      if(e.kind==='star')continue;
+      const cap2=e.kind==='goddess'?18:9;
+      if(e.skirt.length<cap2)gatherLawForHeart(e,tx+e.x,ty+e.y,tx,ty,cap2);
+      if(e.kind==='ember'&&e.skirt.length<cap2&&Math.random()<0.55)
+        gatherLawForHeart(e,tx+e.x,ty+e.y,tx,ty,cap2);
+      if(e.kind==='ember'&&e.skirt.length>=9){
+        /* She gathered nine actual circles of law. Her enthronement is a
+           visible settling through Temple, never a discontinuous jump. */
+        e.kind='goddess'; e.scale=rand(0.95,1.15);
+        const seat=chooseKeptSeat(true); e.enthrone={x:seat.x,y:seat.y};
+        addSeamBurst(tx+e.x,ty+e.y,'TH',1.1);
+        sfx('goddess');
+      }
+    }
+  }
+  const dHL=Math.hypot(hx-lx,hy-ly);
+  if(dHL<200){
+    const mx=(hx+lx)/2,my=(hy+ly)/2,k=1-dHL/200;
+    let g=X.createRadialGradient(mx,my,0,mx,my,70*k+10);
+    g.addColorStop(0,'rgba(255,240,110,'+(0.26*k)+')');
+    g.addColorStop(1,'rgba(255,200,0,0)');
+    X.fillStyle=g; X.beginPath(); X.arc(mx,my,70*k+10,0,TAU); X.fill();
+  }
+  attendance=0;
+  for(let i=heart.sparks.length-1;i>=0;i--){
+    const s=heart.sparks[i]; s.age++;
+    /* I. TEMPLE→HEART — captured sparks orbit the still core */
+    if(s.cap){
+      s.cap.ang += 2.2/(s.cap.r+18);
+      s.cap.r -= 0.22;
+      s.x = tx + Math.cos(s.cap.ang)*s.cap.r;
+      s.y = ty + Math.sin(s.cap.ang)*s.cap.r;
+      /* The law preserves what it holds — actually preserves it. Held fire
+         does not age at all, because the whole claim of TEMPLE is that what
+         it encloses is exempt from the burning-down that governs everything
+         outside. A spark that merely aged slower would still die on the way
+         in, and then the law would preserve nothing. */
+      s.age = Math.min(s.age, s.life-1);
+      if(s.cap.r<12){
+        /* Reaching the center IS the earning. A spark that has spiralled the
+           whole way in has already done the work; refusing it on a coin flip
+           made the kept fire — and therefore every dressed goddess — depend on
+           luck rather than on the passage it actually completed. */
+        /* Kept stars and kept fires are different keepings and must not
+           compete for one slot: a lattice full of held light was crowding out
+           every vessel before it could finish its dress. Vessels are counted
+           on their own. */
+        if(embers.filter(e=>e.kind!=='star').length<(bondSeen>0.5?6:4)){
+          const kept=makeKeptFire();embers.push(kept);
+          addSeamBurst(s.x,s.y,'TH',kept.kind==='goddess'?0.92:0.72);
+          heart.sparks.splice(i,1); continue;
+        } else {
+          const ea=s.cap.ang;
+          s.vx=Math.cos(ea)*1.6; s.vy=Math.sin(ea)*1.6;
+          s.life+=200; s.cap=null;
+        }
+      }
+      /* An escape from the law is possible but it is not inevitable. This
+         chance was applied every frame of the descent, so over a long spiral
+         release became near-certain and nothing ever reached the center —
+         the law held nothing, and no kept fire, and so no goddess, could
+         exist. Scaled to the length of the passage, escape stays rare and
+         arrival stays possible. */
+      if(s.cap && Math.random()<0.00012){ s.vx=Math.cos(s.cap.ang+1.57)*1.2; s.vy=Math.sin(s.cap.ang+1.57)*1.2; s.cap=null; }
+      const ca=1-s.age/s.life;
+      X.fillStyle='rgba(255,120,70,'+(0.8*Math.max(0,ca))+')';
+      X.beginPath(); X.arc(s.x,s.y,1.8,0,TAU); X.fill();
+      continue;
+    }
+    let nearRot=false;
+    for(const G of gyres){
+      const dxp=G.x-s.x, dyp=G.y-s.y, d2p=dxp*dxp+dyp*dyp;
+      if(d2p<(220*G.scale)**2){ s.vx+=dxp/d2p*16*G.scale; s.vy+=dyp/d2p*16*G.scale; nearRot=true; }
+      if(d2p<(15*G.scale)**2){ G.energy=Math.min(G.energy+0.08,2.2); s.dead=true; }
+    }
+    /* III. POWER→HEART — near the turning, burn brighter, die sooner */
+    if(nearRot) s.age+=0.5;
+    /* V. HEART→LOVE — the fire attends the sight */
+    const dlx=love.x-s.x, dly=love.y-s.y, dl2=dlx*dlx+dly*dly;
+    if(dl2<130*130 && dl2>18*18){
+      const dl=Math.sqrt(dl2);
+      s.vx += dlx/dl*0.03 + (-dly/dl)*0.10;
+      s.vy += dly/dl*0.03 + ( dlx/dl)*0.10;
+      attendance++;
+    }
+    s.x+=s.vx; s.y+=s.vy; s.vx*=0.995; s.vy*=0.995;
+    if(s.dead||s.x<0||s.x>W||s.y<0||s.y>H){ heart.sparks.splice(i,1); continue; }
+    if(s.age>s.life){
+      if(Math.random()<0.035 && daughters.length<5)
+        daughters.push({x:s.x,y:s.y,vx:0,vy:0,age:0,life:rand(2600,5200),ph:Math.floor(rand(0,120)),skirt:[],shock:0});
+      heart.sparks.splice(i,1); continue;
+    }
+    const dxt=s.x-tx, dyt=s.y-ty;
+    if(dxt*dxt+dyt*dyt<185*185){
+      let near=null,nd=1e9;
+      for(const p of temple.pts){
+        if(p.kind!=='law'||p.rot>0||p.hermetic)continue;
+        const wx=tx+p.x,wy=ty+p.y,d=(wx-s.x)**2+(wy-s.y)**2;
+        if(d<nd){nd=d;near=p;}
+      }
+      const speed=Math.hypot(s.vx,s.vy);
+      if(near&&nd<18*18){
+        /* HEART·TEMPLE: red acts on blue. A real spark striking a real law
+           node commands that node into a temporary hermetic boundary. The
+           node is displaced and remembered; it is not deleted into POWER. */
+        const wx=tx+near.x,wy=ty+near.y;
+        near.hermetic={a:Math.atan2(wy-hy,wx-hx),r:rand(42,66),age:0,life:rand(520,980)};
+        s.vx*=-0.38;s.vy*=-0.38;s.age+=18;
+        addSeamBurst(wx,wy,'HT',0.88);
+        /* RED AND BLUE MAKE MAGENTA. Not a metaphor and not a mood: where the
+           two actually meet, the non-spectral third is present, because
+           magenta IS the relation between them. It cannot exist without both,
+           so it is emitted here and nowhere green is involved. It is faint and
+           short-lived — a relation is not a substance. */
+        for(let k=0;k<3;k++){
+          const an=rand(0,TAU),sp=rand(0.5,1.6);
+          magentas.push({x:wx,y:wy,vx:Math.cos(an)*sp,vy:Math.sin(an)*sp,
+            age:0,life:rand(40,95),born:0});
+        }
+      }else if(near&&nd<62*62){
+        /* TEMPLE·HEART: blue acts on red. Slow fire entering the lattice is
+           captured by its geometry. LOVE may illuminate this event, but she
+           does not decide which ordered word it is. */
+        const captureChance=0.008+Math.max(0,1-speed/4)*0.024;
+        if(Math.random()<captureChance){
+          const cr=Math.hypot(dxt,dyt);
+          s.cap={r:Math.max(cr,30),ang:Math.atan2(dyt,dxt)};
+          addSeamBurst(s.x,s.y,'TH',0.68);
+        }else{
+          const wx=tx+near.x,wy=ty+near.y,dn=Math.sqrt(nd)||1;
+          s.vx+=(wx-s.x)/dn*0.025;s.vy+=(wy-s.y)/dn*0.025;
+        }
+      }
+    }
+    const beheld=inGaze(s.x,s.y);
+    if(!s.cap&&beheld&&Math.random()<0.0018){
+      /* LOVE·HEART: green acts on existing red. One real spark becomes one
+         rising gold mote; proximity alone never manufactures matter. */
+      golds.push({x:s.x,y:s.y,age:0,life:rand(160,260),vy:-rand(0.5,1.1),from:'heart-spark'});
+      heart.sparks.splice(i,1);continue;
+    }
+    const a=1-s.age/s.life;
+    if(beheld){
+      X.fillStyle='rgba(255,235,110,'+(0.95*a)+')';
+      X.beginPath(); X.arc(s.x,s.y,2.4,0,TAU); X.fill();
+    } else if(inRefract(s.x,s.y)&&Math.random()<0.5){
+      /* II. gilded by the split light, faintly */
+      X.fillStyle='rgba(220,255,190,'+(0.7*a)+')';
+      X.beginPath(); X.arc(s.x,s.y,2.0,0,TAU); X.fill();
+    } else {
+      const hot=nearRot?1:0;
+      X.fillStyle='rgba(255,'+(70+hot*80)+','+(40+hot*20)+','+((0.75+hot*0.2)*a)+')';
+      X.beginPath(); X.arc(s.x,s.y,1.6+hot*0.5,0,TAU); X.fill();
+    }
+  }
+  /* Standing overlap, not only collision: where the fire's own field lies over
+     circles of law, the two are being summed continuously, and magenta is
+     continuously true there. The radius is the heart's real reach, not a
+     token one — red and blue are either both present or they are not. */
+  if(tick%4===0){
+    const pts=temple.pts, L=pts.length, stride=L>150?2:1;
+    for(let k=(tick>>2)%stride;k<L;k+=stride){
+      const p=pts[k];
+      if(p.kind!=='law'||p.rot>0)continue;
+      const wx=tx+p.x, wy=ty+p.y;
+      const d2=(wx-hx)**2+(wy-hy)**2;
+      if(d2<95*95&&Math.random()<0.30){
+        const an=rand(0,TAU),sp=rand(0.2,0.8);
+        magentas.push({x:wx,y:wy,vx:Math.cos(an)*sp,vy:Math.sin(an)*sp,age:0,life:rand(30,70)});
+      }
+    }
+  }
+  /* GREEN IS NOT EXEMPT. Sight is a criterion, not a fortress, and a criterion
+     that cannot be damaged is not doing any work. The aggressor in particular
+     hates being looked at: caught in the beam, she goes for the eye. */
+  if(aggressor.on&&aggressor.t>0.3&&love.stun===0){
+    const dl=Math.hypot(love.x-aggressor.x,love.y-aggressor.y);
+    if(dl<70&&inGaze(aggressor.x,aggressor.y,0.3)&&Math.random()<chance(0.02)){
+      const an=Math.atan2(love.y-aggressor.y,love.x-aggressor.x);
+      love.hitVx+=Math.cos(an)*4.2; love.hitVy+=Math.sin(an)*4.2;
+      love.shock=1; love.stun=170; love.gazeTarget+=Math.PI+rand(-0.7,0.7);
+      addElementImpact('love',love.x,love.y,1.0);
+      sfx('petrify');
+      for(let k=0;k<5;k++)
+        golds.push({x:love.x+rand(-22,22),y:love.y+rand(-18,18),age:0,life:rand(110,190),vy:-rand(0.4,0.9)});
+    }
+  }
+  /* a hot gyre she drifts into will throw her off and blind her a while */
+  if(love.stun===0){
+    for(const G of gyres){
+      if(G.energy<1.15)continue;
+      const dg=Math.hypot(love.x-G.x,love.y-G.y);
+      if(dg<38*G.scale+14&&Math.random()<chance(0.03)){
+        const an=Math.atan2(love.y-G.y,love.x-G.x);
+        love.hitVx+=Math.cos(an)*3.4; love.hitVy+=Math.sin(an)*3.4;
+        love.shock=1; love.stun=120; love.gazeTarget+=rand(-2.2,2.2);
+        addElementImpact('love',love.x,love.y,0.8);
+        G.energy=Math.max(0.4,G.energy-0.25);
+        /* torn from her hem: the dress is real, so it can be lost */
+        if((love.skirt||[]).length&&Math.random()<0.6){
+          love.skirt.pop();
+          skirtRain.push({x:love.x+rand(-10,10),y:love.y+rand(-6,6),
+            vx:rand(-0.8,0.8),vy:rand(-0.6,0.1),age:0,life:rand(60,120),ice:true});
+        }
+        break;
+      }
+    }
+  }
+  if(inGaze(tx,ty,0.2) && every(70,11)){
+    const cands=temple.pts.filter(p=>p.kind==='law'&&p.set>=1&&p.rot===0);
+    const iced=temple.pts.length-cands.length;
+    if(cands.length && iced<temple.pts.length*0.4){
+      const p=cands[Math.floor(Math.random()*cands.length)];
+      if(inGaze(tx+p.x,ty+p.y)){
+        p.kind='ice';
+        /* the heat that left has to go somewhere */
+        emitGlints(tx+p.x,ty+p.y,tx,ty,brideHolds()?5:3);
+      }
+    }
+  }
+  for(const G of gyres){
+    const dTP=Math.hypot(tx-G.x,ty-G.y);
+    if(dTP<330*G.scale+150){
+      if(tick%18===0 && temple.pts.length>50){
+        let far=null,fd=-1;
+        for(const p of temple.pts){
+          if(p.kind!=='law'||p.rot>0)continue;
+          const wx=tx+p.x,wy=ty+p.y,d=(wx-G.x)**2+(wy-G.y)**2;
+          if(d<(170*G.scale+60)**2&&d>fd){fd=d;far=p;}
+        }
+        if(far){ far.rot=0.01;
+          ferments.push({x:tx+far.x,y:ty+far.y,age:0,life:150,vx:0,vy:0,g:G});
+        }
+      }
+      /* ice melt: the turning can undo the keeping, but thawing is endothermic —
+         it is rare, needs closeness and a hot gyre, and costs the gyre dearly */
+      if(every(200,29) && G.energy>0.85){
+        for(const p of temple.pts){
+          if(p.kind!=='ice') continue;
+          const wx=tx+p.x, wy=ty+p.y;
+          const d=(wx-G.x)**2+(wy-G.y)**2;
+          const lim=95*G.scale+30;
+          if(d<lim*lim && Math.random()<0.3 && !brideHolds()){
+            p.kind='law';
+            G.energy=Math.max(0.55,G.energy-0.3);
+            break;
+          }
+        }
+      }
+      for(let i=G.out.length-1;i>=0;i--){
+        const q=G.out[i], dxt=q.x-tx, dyt=q.y-ty;
+        if(dxt*dxt+dyt*dyt<160*160){
+          let ok=true,anchored=false;
+          for(const p of temple.pts){
+            const d=(tx+p.x-q.x)**2+(ty+p.y-q.y)**2;
+            if(d<150){ok=false;break;}
+            if(d<30*30)anchored=true;
+          }
+          if(ok&&anchored&&temple.pts.length<700){
+            temple.pts.push({x:q.x-tx,y:q.y-ty,set:0,kind:'law',rot:0});
+            G.out.splice(i,1);
+          }
+        }
+      }
+    }
+  }
+  for(let i=golds.length-1;i>=0;i--){
+    const m=golds[i]; m.age++;
+    /* A mote's rise is momentum, not a summons. It slows as it spends itself
+       and kindles where it actually stops — there is no ceiling to reach. */
+    if(m.vx===undefined)m.vx=rand(-0.22,0.22);
+    m.vy*=0.992; m.vx*=0.995;
+    m.y+=m.vy; m.x+=m.vx+Math.sin(m.age*0.05)*0.3;
+    if(m.age>m.life){
+      /* the mote cools into a star exactly where its rising ended */
+      if(stars.length<240)
+        stars.push(makeStar(m.x,m.y,m.vx*0.5,m.vy*0.35));
+      golds.splice(i,1); continue;
+    }
+    const a=1-m.age/m.life;
+    X.fillStyle='rgba(255,242,120,'+(0.85*a)+')';
+    X.beginPath(); X.arc(m.x,m.y,2.2*a+0.5,0,TAU); X.fill();
+  }
+  for(let i=ferments.length-1;i>=0;i--){
+    const f=ferments[i]; f.age++;
+    const G=f.g||gyres[0];
+    const dx=G.x-f.x, dy=G.y-f.y, d=Math.hypot(dx,dy)||1;
+    f.vx+=dx/d*0.03; f.vy+=dy/d*0.03;
+    f.x+=f.vx; f.y+=f.vy; f.vx*=0.98; f.vy*=0.98;
+    if(f.age>f.life||d<12){
+      if(d<12) G.energy=Math.min(G.energy+0.04,2.2);
+      ferments.splice(i,1); continue;
+    }
+    const a=1-f.age/f.life;
+    X.fillStyle='rgba(230,60,235,'+(0.7*a)+')';
+    X.beginPath(); X.arc(f.x,f.y,1.7,0,TAU); X.fill();
+  }
+  drawSeamBursts();
+}
+/* ============ the two ordered spellings ============
+   HEART·TEMPLE: red acts on blue, imposing a hermetic boundary on law.
+   TEMPLE·HEART: blue acts on red, capturing and clothing fire as a core.
+   LOVE can reveal either event. Her presence never transposes their order. */
+function heartTempleSeam(hx,hy,tx,ty){
+  const near=Math.hypot(hx-tx,hy-ty)<210;
+  const hermetic=[];
+  for(const p of temple.pts){
+    if(!p.hermetic)continue;
+    const h=p.hermetic;h.age++;
+    const pulse=1+0.035*heartAmp(0),a=h.a,r=h.r*pulse;
+    const targetX=hx-tx+Math.cos(a)*r,targetY=hy-ty+Math.sin(a)*r;
+    p.x=lerp(p.x,targetX,0.085);p.y=lerp(p.y,targetY,0.085);p.set=Math.max(p.set,0.82);
+    if(h.age>=h.life){delete p.hermetic;continue;}
+    hermetic.push({p,a,wx:tx+p.x,wy:ty+p.y});
+  }
+  hermetic.sort((a,b)=>a.a-b.a);
+
+  const captured=heart.sparks.reduce((n,s)=>n+(s.cap?1:0),0);
+  const coreMatter=(heart.skirt||[]).length+captured*2;
+  bondSeen =lerp(bondSeen,near?Math.min(1,coreMatter/8):0,0.03);
+  bondAlone=lerp(bondAlone,Math.min(1,hermetic.length/7),0.03);
+
+  if(bondSeen>0.04&&near){
+    /* TEMPLE·HEART uses only real nearby law. No decorative proxy diamonds. */
+    const cand=[];
+    for(const p of temple.pts){
+      if(p.rot>0||p.hermetic)continue;
+      const wx=tx+p.x,wy=ty+p.y,dd=(wx-hx)**2+(wy-hy)**2;
+      if(dd<170*170)cand.push({wx,wy,dd});
+    }
+    cand.sort((a,b)=>a.dd-b.dd);
+    for(let k=0;k<Math.min(4,cand.length);k++){
+      const c=cand[k],mx=(c.wx+hx)/2,my=(c.wy+hy)/2;
+      const px2=-(hy-c.wy)*0.22,py2=(hx-c.wx)*0.22;
+      X.strokeStyle='rgba(100,150,255,'+(0.24*bondSeen*(1-k*0.18))+')';X.lineWidth=0.9;
+      X.beginPath();X.moveTo(c.wx,c.wy);X.quadraticCurveTo(mx+px2,my+py2,hx,hy);X.stroke();
+    }
+  }
+
+  if(hermetic.length){
+    /* HEART·TEMPLE is a boundary made of the actual struck nodes. Red acts;
+       blue closes around an inside; magenta remains only at the seam. */
+    if(hermetic.length>1){
+      X.strokeStyle='rgba(90,135,255,'+(0.20+0.22*bondAlone)+')';X.lineWidth=0.85;
+      X.beginPath();X.moveTo(hermetic[0].wx,hermetic[0].wy);
+      for(let i=1;i<hermetic.length;i++)X.lineTo(hermetic[i].wx,hermetic[i].wy);
+      if(hermetic.length>3)X.lineTo(hermetic[0].wx,hermetic[0].wy);X.stroke();
+    }
+    for(const h of hermetic){
+      X.strokeStyle='rgba(205,75,225,'+(0.10+0.16*bondAlone)+')';X.lineWidth=0.55;
+      X.beginPath();X.moveTo(hx,hy);X.lineTo(h.wx,h.wy);X.stroke();
+    }
+  }
+}
+/* ============ the goddess's regard ============
+   rot multiplies but cannot keep — and now, at last, something answers it.
+   a dressed goddess may pass judgment on a daughter-gyre that turns too near
+   the law: a filament of regard and the color draining to stone. the event
+   flashes and passes; only the law grown from the corpse is allowed to stay. */
+let petrifying=null;
+function updateGoddessJudgment(tx,ty){
+  for(const e of embers)if(e.kind==='goddess'&&e.judgmentCooldown>0)e.judgmentCooldown--;
+  /* A dressed goddess is RED wearing BLUE — a compound, so she is mortal on the
+     same terms as the others. She ages, and at the end the dress falls back to
+     the lattice as law while the fire she was returns to the world as fire.
+     Her skirt is real, so it is really lost. */
+  for(let i=embers.length-1;i>=0;i--){
+    const e=embers[i];
+    if(e.kind!=='goddess')continue;
+    if(e.life===undefined){e.age=e.age||0;e.life=slow(rand(40000,78000));}
+    e.age++;
+    if(e.age>e.life){
+      const wx=tx+e.x, wy=ty+e.y;
+      scatterLawSkirt(e,wx,wy-3*(e.scale||1),0.62*(e.scale||1),1);
+      decompose(wx,wy,['red','blue'],1.0);
+      addSeamBurst(wx,wy,'TH',0.8);
+      sfx('petrify');
+      embers.splice(i,1);
+    }
+  }
+  if(petrifying){
+    const G=petrifying.G,gd=petrifying.gd;
+    if(!gyres.includes(G)||!embers.includes(gd)){
+      if(G)G.petrify=0;
+      petrifying=null;return;
+    }
+    petrifying.t+=0.0035*pace;
+    G.petrify=petrifying.t; G.energy=lerp(G.energy,0.12,0.06);
+    const gx=tx+gd.x, gy=ty+gd.y-3*(gd.scale||1);
+    const a=(0.35+0.25*Math.sin(tick*0.3))*Math.min(1,petrifying.t*3);
+    let lg=X.createLinearGradient(gx,gy,G.x,G.y);
+    lg.addColorStop(0,'rgba(200,240,255,'+a+')');
+    lg.addColorStop(1,'rgba(120,160,255,'+(a*0.8)+')');
+    X.strokeStyle=lg; X.lineWidth=1.1;
+    const mx=(gx+G.x)/2, my=(gy+G.y)/2;
+    X.beginPath(); X.moveTo(gx,gy);
+    X.quadraticCurveTo(mx+Math.sin(tick*0.05)*8,my+Math.cos(tick*0.05)*8,G.x,G.y); X.stroke();
+    if(petrifying.t>=1){
+      addElementImpact('ice',G.x,G.y,1.1);
+      addElementImpact('temple',G.x,G.y,0.9);
+      sfx('petrify');
+      /* died near the law: the law grows over the corpse */
+      if(Math.hypot(G.x-tx,G.y-ty)<230){
+        for(let k=0;k<5&&temple.pts.length<700;k++){
+          const an=rand(0,TAU),r3=rand(4,22*G.scale);
+          temple.pts.push({x:G.x+Math.cos(an)*r3-tx,y:G.y+Math.sin(an)*r3-ty,set:0,kind:'law',rot:0});
+        }
+      }
+      gyres.splice(gyres.indexOf(G),1);
+      gd.judgmentCooldown=slow(14400);
+      petrifying=null;
+    }
+    return;
+  }
+  if(!every(1200,53))return;
+  const judges=embers.filter(e=>e.kind==='goddess'&&(e.skirt||[]).length>=13&&!(e.judgmentCooldown>0));
+  for(const gd of judges){
+    const gx=tx+gd.x,gy=ty+gd.y-3*(gd.scale||1);
+    for(const G of gyres){
+      if(G.root)continue;
+      if(Math.hypot(G.x-gx,G.y-gy)<260&&Math.random()<0.08){
+        /* Judgment is paid for with four real circles of her dress. She must
+           be richly clothed before she can spend them and remain a goddess. */
+        spendLawSkirt(gd,gx,gy,0.62*(gd.scale||1),4);
+        petrifying={G,gd,t:0};G.petrify=0.001;
+        addSeamBurst(gx,gy,'TH',0.9);
+        return;
+      }
+    }
+  }
+}
+/* ============ the two arrivals ============
+   Neither is spawned. Each is a condition the world can enter, and when the
+   condition holds the figure is simply there. Neither is named on screen.
+
+   THE BRIDE (GREEN·BLUE) — she comes when sight and law have been in contact
+   long enough for the contact itself to become a thing: green fully dressed in
+   ice, standing in a well-grown lattice, beheld. She is absolute sound, so what
+   she does is make the two agree — while she stands, ice does not melt and the
+   law grows freely, and the glints of the cooling gather to her instead of
+   dispersing.
+
+   THE AGGRESSOR (HEART·LOVE·POWER) — three colors in sequence, so a transit,
+   not a state. She requires what the bride does not: fire, sight, and rot all
+   present at strength, with law scarce. She does not preserve. She takes what
+   is turning and spends it. */
+const bride={on:false,x:0,y:0,t:0,cool:0,life:0,age:0,dying:0};
+const aggressor={on:false,x:0,y:0,t:0,cool:0,vx:0,vy:0,target:null,life:0,age:0,dying:0};
+/* ============ what is compound is mortal ============
+   A single color is a primitive and cannot be taken apart. Anything wearing
+   more than one color is a COMPOUND — a state or a transit — and every compound
+   is temporary by construction, because it is held together only by the
+   relation between its terms. So the multicolor goddesses come, hold for a
+   while, and DIE; and dying, they do not vanish, they DECOMPOSE. What is left
+   is one of the colors that made them, returned to the world as itself.
+   POWER's non-persistence is the same law seen from underneath. */
+function decompose(x,y,parts,strength){
+  /* the terms come apart and go their separate ways */
+  for(const c of parts){
+    for(let k=0;k<Math.max(2,Math.round(5*strength));k++){
+      const an=rand(0,TAU), sp=rand(0.6,2.2);
+      if(c==='green'){
+        golds.push({x,y,age:0,life:rand(120,210),vy:-rand(0.3,0.9),vx:rand(-0.5,0.5)});
+      }else if(c==='blue'){
+        skirtRain.push({x:x+rand(-8,8),y:y+rand(-8,8),vx:Math.cos(an)*sp*0.5,
+          vy:Math.sin(an)*sp*0.4,age:0,life:rand(70,140),ice:true});
+      }else if(c==='red'){
+        heart.sparks.push({x,y,vx:Math.cos(an)*sp,vy:Math.sin(an)*sp,age:0,life:rand(120,240)});
+      }else if(c==='pink'){
+        magentas.push({x,y,vx:Math.cos(an)*sp,vy:Math.sin(an)*sp,age:0,life:rand(50,110)});
+      }
+    }
+    addElementImpact(c==='green'?'love':c==='blue'?'ice':c==='red'?'heart':'power',x,y,0.5*strength);
+  }
+}
+function updateBride(tx,ty){
+  if(bride.cool>0)bride.cool--;
+  const dressed=(love.skirt||[]).length>=14;
+  const grown=temple.pts.length>150&&temple.iceCount>26;
+  const near=Math.hypot(love.x-tx,love.y-ty)<420;
+  const want=dressed&&grown&&near&&inGaze(tx,ty,0.3)&&!bride.cool;
+  if(want&&!bride.on){
+    bride.on=true;bride.t=0;bride.age=0;bride.dying=0;
+    /* she is given a span when she arrives. no compound is permanent. */
+    bride.life=slow(rand(34000,62000));
+    sfx('goddess');
+  }
+  if(bride.on){
+    bride.age++;
+    /* GREEN·BLUE decomposes into GREEN and BLUE — never into something new.
+       The ice she wore falls as ice; the light she was falls as light. */
+    if(bride.dying>0){
+      bride.dying--;
+      bride.t=Math.max(0,bride.t-0.02);
+      if(bride.dying===0){
+        decompose(bride.x,bride.y,['green','blue'],1.2);
+        /* the law she grew stays: what a compound builds outlives it */
+        bride.on=false;bride.t=0;bride.cool=slow(rand(26000,48000));
+        return;
+      }
+    } else if(bride.age>bride.life){
+      bride.dying=slow(420);
+      sfx('petrify');
+    }
+    bride.t=Math.min(1,bride.t+0.0016*pace);
+    /* she stands on the seam: the midpoint of sight and law */
+    bride.x=lerp(bride.x||love.x,(love.x+tx)/2,0.02);
+    bride.y=lerp(bride.y||love.y,(love.y+ty)/2,0.02);
+    if(!(dressed&&grown&&near)){bride.t-=0.006*pace;if(bride.t<=0){bride.on=false;bride.cool=slow(9000);}}
+    const a=bride.t;
+    /* the sounding: two rings, one green one cyan, breathing against each other */
+    X.save();X.globalCompositeOperation='lighter';
+    for(let k=0;k<2;k++){
+      const rr=54+k*26+Math.sin(tick*0.021+k*2.1)*9;
+      X.strokeStyle=k?'rgba(90,240,245,'+(0.24*a)+')':'rgba(110,255,165,'+(0.22*a)+')';
+      X.lineWidth=1.1;X.beginPath();X.arc(bride.x,bride.y,rr,0,TAU);X.stroke();
+    }
+    let bg=X.createRadialGradient(bride.x,bride.y,0,bride.x,bride.y,66);
+    bg.addColorStop(0,'rgba(150,255,230,'+(0.30*a)+')');
+    bg.addColorStop(0.45,'rgba(60,215,225,'+(0.14*a)+')');
+    bg.addColorStop(1,'rgba(0,200,255,0)');
+    X.fillStyle=bg;X.beginPath();X.arc(bride.x,bride.y,66,0,TAU);X.fill();
+    /* the thread that holds green to blue, drawn taut */
+    X.strokeStyle='rgba(170,255,240,'+(0.30*a)+')';X.lineWidth=0.9;
+    X.beginPath();X.moveTo(love.x,love.y);
+    X.quadraticCurveTo(bride.x,bride.y,tx,ty);X.stroke();
+    X.restore();
+    drawLoveSkirt(bride.x,bride.y-4,1.15,love.skirt,0.6+0.4*Math.sin(tick*0.03));
+    /* while she stands: the agreement holds */
+    if(a>0.4){
+      if(tick%9===0&&temple.pts.length<700){
+        const an=rand(0,TAU),r3=rand(20,120);
+        const nx=bride.x-tx+Math.cos(an)*r3, ny=bride.y-ty+Math.sin(an)*r3;
+        if(seatFree(nx,ny,150))addLawPoint(nx,ny,'ice');
+      }
+    }
+  }
+}
+function brideHolds(){return bride.on&&bride.t>0.4;}
+function updateAggressor(tx,ty){
+  if(aggressor.cool>0)aggressor.cool--;
+  /* Advanced conditions, and deliberately a narrow gate: she is a transit of
+     three colors, so all three must be strong AT ONCE — fire multiplied, sight
+     open, rot turning hard — while law is not present to arbitrate between
+     them. The last clause is what makes her aggression rather than mere heat.
+
+     But "law is absent" cannot mean "the lattice is small", or she would become
+     impossible in a mature world — and a grown temple far across the field is
+     no arbiter of a quarrel here. What matters is whether rule is present AT
+     THE SITE, so she asks how tightly the hot gyre is actually gripped. */
+  let hotG=null,hotE=0;
+  for(const G of gyres)if(G.energy>hotE){hotE=G.energy;hotG=G;}
+  const ungoverned = hotG ? (hotG.lawGrip||0)<0.3 : false;
+  const cond = daughters.length>=3 && heart.sparks.length>=18 &&
+               hotE>1.25 && ungoverned && love.stun===0 && !aggressor.cool;
+  if(cond&&!aggressor.on){
+    aggressor.on=true;aggressor.t=0;aggressor.age=0;aggressor.dying=0;
+    /* a transit is even less permanent than a state: three terms held at once
+       is the least stable thing the world can do, so her span is the shorter */
+    aggressor.life=slow(rand(14000,26000));
+    aggressor.x=love.x;aggressor.y=love.y;aggressor.vx=0;aggressor.vy=0;
+    sfx('petrify');
+  }
+  if(!aggressor.on)return;
+  aggressor.age++;
+  if(aggressor.dying>0){
+    aggressor.dying--;
+    aggressor.t=Math.max(0,aggressor.t-0.02);
+    if(aggressor.dying===0){
+      /* HEART·LOVE·POWER reverts, and a transit does not come apart evenly —
+         it collapses toward whichever term the world can still support. Where
+         rot is still turning she goes back to PINK; where fire remains she
+         goes back to RED; otherwise the sight she rode returns as GREEN.
+         She is reverted to a different color, not merely deleted. */
+      let hot=0; for(const G of gyres) if(G.energy>hot) hot=G.energy;
+      const back = hot>1.2 ? ['pink'] : (heart.sparks.length>14 ? ['red'] : ['green']);
+      decompose(aggressor.x,aggressor.y,back,1.4);
+      aggressor.on=false;aggressor.t=0;aggressor.target=null;
+      aggressor.cool=slow(rand(30000,56000));
+      return;
+    }
+  } else if(aggressor.age>aggressor.life){
+    aggressor.dying=slow(300);
+    sfx('petrify');
+  }
+  aggressor.t=Math.min(1,aggressor.t+0.002*pace);
+  if(!(hotE>1.05&&daughters.length>=1)){
+    aggressor.t-=0.02;
+    if(aggressor.t<=0){aggressor.on=false;aggressor.cool=slow(18000);aggressor.target=null;return;}
+  }
+  /* she hunts the turning: three colors in sequence is a transit, and a transit
+     has a direction. she closes, and what she reaches she spends. */
+  if(!aggressor.target||!gyres.includes(aggressor.target))aggressor.target=hotG;
+  const T=aggressor.target;
+  if(T){
+    const dx=T.x-aggressor.x,dy=T.y-aggressor.y,d=Math.hypot(dx,dy)||1;
+    aggressor.vx+=dx/d*0.10;aggressor.vy+=dy/d*0.10;
+    aggressor.vx*=0.94;aggressor.vy*=0.94;
+    aggressor.x+=aggressor.vx;aggressor.y+=aggressor.vy;
+    if(d<40*T.scale+18){
+      T.energy=Math.max(0.2,T.energy-0.035);T.shock=1;
+      if(tick%6===0){
+        addElementImpact('power',T.x+rand(-20,20),T.y+rand(-20,20),0.3);
+        const an=rand(0,TAU);
+        heart.sparks.push({x:aggressor.x,y:aggressor.y,vx:Math.cos(an)*2.4,vy:Math.sin(an)*2.4,age:0,life:rand(90,170)});
+      }
+    }
+  }
+  const a=aggressor.t;
+  X.save();X.globalCompositeOperation='lighter';
+  /* three bodies in one figure, never resolving into a single hue */
+  const ph=tick*0.05;
+  const trio=[['rgba(255,40,30,',0],['rgba(90,255,120,',TAU/3],['rgba(255,90,200,',TAU*2/3]];
+  for(const [col,off] of trio){
+    const ox=aggressor.x+Math.cos(ph+off)*11, oy=aggressor.y+Math.sin(ph+off)*11;
+    let tg=X.createRadialGradient(ox,oy,0,ox,oy,26);
+    tg.addColorStop(0,col+(0.55*a)+')');
+    tg.addColorStop(1,col+'0)');
+    X.fillStyle=tg;X.beginPath();X.arc(ox,oy,26,0,TAU);X.fill();
+  }
+  /* the blades: her regard is not a beam but a set of cuts */
+  for(let k=0;k<3;k++){
+    const an=ph*1.7+k*TAU/3, len=44+18*Math.sin(tick*0.08+k);
+    const col=k===0?'rgba(255,60,40,':k===1?'rgba(110,255,140,':'rgba(255,80,205,';
+    X.strokeStyle=col+(0.32*a)+')';X.lineWidth=1.4;
+    X.beginPath();
+    X.moveTo(aggressor.x+Math.cos(an)*10,aggressor.y+Math.sin(an)*10);
+    X.lineTo(aggressor.x+Math.cos(an)*len,aggressor.y+Math.sin(an)*len);
+    X.stroke();
+  }
+  X.restore();
+}
+
+/* torn skirt-law falls as blue rain, and where it lands near the temple,
+   it anchors — the law cycling home */
+/* MAGENTA IS A RELATION, NOT A PRIMARY.
+   Red and blue are receptors; magenta is the eye's verdict on their sum, which
+   is why it has no wavelength. So it may never be simply drawn — it must be
+   produced, here, by red and blue actually meeting. These motes are that
+   verdict. Alone each fades to nothing, because a relation with only one term
+   is not a relation. But where enough of them coincide, the relation has been
+   asserted often enough to become a thing that turns: a gyre. POWER is derived,
+   and this is the derivation. */
+const magentas=[];
+function updateMagentas(){
+  for(let i=magentas.length-1;i>=0;i--){
+    const m=magentas[i]; m.age++;
+    m.x+=m.vx; m.y+=m.vy; m.vx*=0.97; m.vy*=0.97;
+    if(m.age>m.life){magentas.splice(i,1);continue;}
+    const a=1-m.age/m.life;
+    /* #ff00ff, honestly: full red and full blue, no green at all */
+    X.save(); X.globalCompositeOperation='lighter';
+    let g=X.createRadialGradient(m.x,m.y,0,m.x,m.y,7);
+    g.addColorStop(0,'rgba(255,0,255,'+(0.55*a)+')');
+    g.addColorStop(1,'rgba(255,0,255,0)');
+    X.fillStyle=g; X.beginPath(); X.arc(m.x,m.y,7,0,TAU); X.fill();
+    X.fillStyle='rgba(255,90,255,'+(0.7*a)+')';
+    X.beginPath(); X.arc(m.x,m.y,1.3*a+0.4,0,TAU); X.fill();
+    X.restore();
+  }
+  /* enough coincident assertions and the relation stands up on its own */
+  if(tick%30===0&&magentas.length>=22&&gyres.length<4){
+    let cx=0,cy=0;
+    for(const m of magentas){cx+=m.x;cy+=m.y;}
+    cx/=magentas.length;cy/=magentas.length;
+    let tight=0;
+    for(const m of magentas)if((m.x-cx)**2+(m.y-cy)**2<110*110)tight++;
+    if(tight>=18){
+      gyres.push(makeGyre(cx,cy,rand(0.35,0.55),false));
+      addElementImpact('power',cx,cy,0.9);
+      sfx('devour');
+      magentas.length=0;
+    }
+  }
+}
+
+/* GREEN·BLUE, the debt paid: cooling does not destroy heat, it displaces it.
+   When sight freezes a circle of law, the heat that left has nowhere to go and
+   escapes as glints — scattered photons thrown outward from the lattice edge,
+   briefly visible, then gone. They are not particles of anything; they are the
+   fact that the ledger balances. */
+const glints=[];
+function emitGlints(wx,wy,tx,ty,n){
+  /* the heat leaves along the outward normal of the lattice — away from the
+     seat of law, since that is the direction in which there is room */
+  const ax=wx-tx, ay=wy-ty, ad=Math.hypot(ax,ay)||1;
+  for(let k=0;k<(n||3);k++){
+    const spread=rand(-0.9,0.9);
+    const a=Math.atan2(ay,ax)+spread;
+    const sp=rand(0.9,2.4);
+    glints.push({x:wx,y:wy,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+      age:0,life:rand(18,40),warm:Math.random()});
+  }
+}
+function updateGlints(){
+  for(let i=glints.length-1;i>=0;i--){
+    const g=glints[i]; g.age++;
+    g.x+=g.vx; g.y+=g.vy; g.vx*=0.93; g.vy*=0.93;
+    if(g.age>g.life){glints.splice(i,1);continue;}
+    const a=1-g.age/g.life;
+    /* they leave as light, not as fire: near-white with a faint warm cast,
+       because what is departing is the heat the ice no longer holds */
+    X.save(); X.globalCompositeOperation='lighter';
+    X.fillStyle=g.warm>0.5
+      ? 'rgba(255,248,220,'+(0.85*a*a)+')'
+      : 'rgba(210,255,250,'+(0.80*a*a)+')';
+    X.beginPath(); X.arc(g.x,g.y,1.15*a+0.35,0,TAU); X.fill();
+    if(a>0.55){
+      X.strokeStyle='rgba(255,255,240,'+(0.30*a)+')'; X.lineWidth=0.45;
+      X.beginPath(); X.moveTo(g.x-g.vx*2.2,g.y-g.vy*2.2); X.lineTo(g.x,g.y); X.stroke();
+    }
+    X.restore();
+  }
+}
+const skirtRain=[];
+function updateSkirtRain(){
+  for(let i=skirtRain.length-1;i>=0;i--){
+    const d=skirtRain[i]; d.age++;
+    d.vy+=0.05; d.x+=d.vx; d.y+=d.vy; d.vx*=0.99;
+    const a=1-d.age/d.life;
+    X.fillStyle=d.ice?'rgba(150,240,255,'+(0.8*a)+')':'rgba(100,150,255,'+(0.75*a)+')';
+    X.beginPath(); X.arc(d.x,d.y,1.3,0,TAU); X.fill();
+    if(d.age>=d.life){
+      PX.fillStyle='rgba(120,190,255,0.35)';
+      PX.beginPath(); PX.arc(d.x,d.y,1.2,0,TAU); PX.fill();
+      const ox=d.x-tPos.x, oy=d.y-tPos.y;
+      if(ox*ox+oy*oy<170*170&&temple.pts.length<700){
+        if(seatFree(ox,oy,150))addLawPoint(ox,oy,'law');
+      }
+      skirtRain.splice(i,1);
+    }
+  }
+}
+/* ============ sound: only for what matters ============ */
+let AC=null, sndOn=true;
+function audioInit(){ if(AC||!sndOn)return; try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){} }
+addEventListener('pointerdown',audioInit); addEventListener('keydown',audioInit);
+function tone(freq,dur,type,vol,delay,glide){
+  if(!AC||!sndOn)return;
+  const t0=AC.currentTime+(delay||0);
+  const o=AC.createOscillator(),g=AC.createGain();
+  o.type=type||'sine'; o.frequency.setValueAtTime(freq,t0);
+  if(glide)o.frequency.exponentialRampToValueAtTime(glide,t0+dur);
+  g.gain.setValueAtTime(0.0001,t0);
+  g.gain.exponentialRampToValueAtTime(vol||0.06,t0+0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  o.connect(g).connect(AC.destination);
+  o.start(t0); o.stop(t0+dur+0.05);
+}
+function sfx(name){
+  if(!AC||!sndOn)return;
+  if(name==='impact'){ tone(72,1.4,'sine',0.09,0,40); tone(1900,0.9,'triangle',0.022,0.03,600); }
+  else if(name==='devour'){ tone(300,1.1,'sawtooth',0.03,0,55); }
+  else if(name==='ahika'){ tone(1560,0.7,'sine',0.045); tone(2340,1.1,'sine',0.028,0.12); }
+  else if(name==='goddess'){ tone(523,1.2,'sine',0.04); tone(659,1.2,'sine',0.035,0.08); tone(784,1.6,'sine',0.03,0.16); }
+  else if(name==='petrify'){ tone(980,0.5,'square',0.018,0,240); tone(140,0.9,'sine',0.055,0.1); }
+}
+/* STARFALL: keeping rises gently; what returns strikes without preference. */
+function starImpact(x,y,hx,hy,tx,ty,energy){
+  /* what the descent already spent, the landing cannot spend again */
+  energy=Math.max(0,Math.min(1,energy==null?1:energy));
+  sfx('impact');
+  const blastScale=0.18+0.82*Math.sqrt(energy);
+  const R=140*blastScale, R2=R*R;
+  /* Matter created by this impact must not be erased by that same impact. */
+  const goldStart=golds.length, emberStart=embers.length;
+  const debris=[];
+  for(let k=0;k<Math.max(6,Math.floor(44*(0.12+0.88*energy)));k++){
+    const an=rand(0,TAU), sp=rand(1.1,6.8)*Math.pow(Math.random(),0.34);
+    const kind=Math.random()<0.62?'needle':'shard';
+    debris.push({x:0,y:0,px:0,py:0,
+      vx:Math.cos(an)*sp+rand(-0.35,0.35),vy:Math.sin(an)*sp+rand(-0.35,0.35),
+      drag:rand(0.958,0.986),sz:rand(0.45,2.0),warm:Math.random(),kind,
+      stretch:kind==='needle'?rand(2.8,7.2):rand(1.1,2.4),rot:an+rand(-0.4,0.4),
+      spin:kind==='shard'?rand(-0.18,0.18):rand(-0.025,0.025),gravity:rand(0.006,0.024)});
+  }
+  const facets=[];
+  for(let k=0;k<Math.max(2,Math.ceil(5*blastScale));k++)
+    facets.push({an:rand(0,TAU),reach:rand(0.48,1.02),spread:rand(0.025,0.095),skew:rand(-0.18,0.18),warm:Math.random()});
+  const edge=[];for(let k=0;k<24;k++)edge.push(rand(0.72,1.08));
+  starBursts.push({x,y,age:0,life:132,debris,facets,edge,maxR:168*blastScale});
+
+  /* Even green can be struck: the impact tears a radiant hole through the
+     permanent record rather than treating LOVE's sediment as exempt. */
+  const eraseImpact=(ctx,cx,cy,r)=>{
+    ctx.save();ctx.globalCompositeOperation='destination-out';
+    const cut=ctx.createRadialGradient(cx,cy,0,cx,cy,r);
+    cut.addColorStop(0,'rgba(0,0,0,0.98)');
+    cut.addColorStop(0.48,'rgba(0,0,0,0.72)');
+    cut.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=cut;ctx.beginPath();ctx.arc(cx,cy,r,0,TAU);ctx.fill();ctx.restore();
+  };
+  eraseImpact(PX,x,y,R);eraseImpact(SX,x,y,R);
+
+  let sparkHits=0;
+  for(let i=heart.sparks.length-1;i>=0;i--){
+    const s=heart.sparks[i];
+    if((s.x-x)**2+(s.y-y)**2<R2){
+      /* gold × red: fire is not merely erased — much of it is transmuted upward */
+      if(Math.random()<0.45) golds.push({x:s.x,y:s.y,age:0,life:rand(120,200),vy:-rand(0.5,1.0)});
+      else if(sparkHits++<10) addElementImpact('heart',s.x,s.y,0.20);
+      heart.sparks.splice(i,1);
+    }
+  }
+  for(let i=daughters.length-1;i>=0;i--){
+    const h=daughters[i];
+    if((h.x-x)**2+(h.y-y)**2<R2*0.72){
+      addElementImpact('heart',h.x,h.y,0.72);scatterLawSkirt(h,h.x,h.y,0.42,1);
+      golds.push({x:h.x,y:h.y,age:0,life:rand(140,220),vy:-rand(0.6,1.1)}); /* her fire returns to the sky */
+      PX.fillStyle='rgba(125,34,18,0.72)';
+      PX.beginPath(); PX.arc(h.x,h.y,5.5,0,TAU); PX.fill();
+      daughters.splice(i,1);
+    }
+  }
+  if((hx-x)**2+(hy-y)**2<R2){
+    heart.shock=1;addElementImpact('heart',hx,hy,1.25);scatterLawSkirt(heart,hx,hy,1.05,0.42);
+    heart.rings.push({r:8,a:1.8});
+    for(let k=0;k<18;k++){
+      const a=rand(0,TAU), sp=rand(2.2,5.2);
+      heart.sparks.push({x:hx,y:hy,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,age:80,life:rand(100,180)});
+    }
+  }
+
+  const ldx=love.x-x, ldy=love.y-y, ld=Math.hypot(ldx,ldy);
+  if(ld<R){
+    const a=ld>1?Math.atan2(ldy,ldx):rand(0,TAU);
+    const force=5.5*(1-ld/R)+1.2;
+    love.hitVx+=Math.cos(a)*force; love.hitVy+=Math.sin(a)*force;
+    love.gazeTarget+=Math.PI+rand(-0.8,0.8); love.shock=1;addElementImpact('love',love.x,love.y,1.15);
+    love.stun=170; /* even green: the criterion goes dark awhile */
+    for(let k=0;k<8;k++) /* gold × green: overwhelmed sight still begets light */
+      golds.push({x:love.x+rand(-26,26),y:love.y+rand(-20,20),age:0,life:rand(120,220),vy:-rand(0.5,1.1)});
+  }
+
+  const TR2=(104*blastScale)**2, brkCap=Math.floor(30*energy);
+  let broken=0;
+  for(let i=temple.pts.length-1;i>=0&&temple.pts.length>3;i--){
+    const p=temple.pts[i], wx=tx+p.x, wy=ty+p.y;
+    if((wx-x)**2+(wy-y)**2<TR2 && broken<brkCap){addElementImpact('temple',wx,wy,0.24);temple.pts.splice(i,1);broken++;}
+  }
+  if(broken){temple.shock=1;addElementImpact('temple',tx,ty,Math.min(1.2,0.35+broken/26));}
+  if(broken>=8&&Math.random()<0.5){
+    /* gold × blue: struck deep enough, the law closes around the light and KEEPS it */
+    const seat=chooseKeptSeat(false);
+    embers.push({x:seat.x,y:seat.y,ph:rand(0,TAU),kind:'star',scale:1,skirt:[]});
+    addElementImpact('star',tx+seat.x,ty+seat.y,0.9);
+    sfx('ahika');
+  }
+  for(let i=emberStart-1;i>=0;i--){
+    const e=embers[i];
+    if((tx+e.x-x)**2+(ty+e.y-y)**2<TR2){
+      if(e.kind==='goddess'){scatterLawSkirt(e,tx+e.x,ty+e.y-3*(e.scale||1),0.62*(e.scale||1),1);addElementImpact('goddess',tx+e.x,ty+e.y,1.35);}
+      else addElementImpact(e.kind==='star'?'star':'heart',tx+e.x,ty+e.y,0.55);
+      embers.splice(i,1);
+    }
+  }
+
+  for(const G of gyres){
+    const gd=Math.hypot(G.x-x,G.y-y);
+    if(gd<150*G.scale+80){
+      G.shock=1;addElementImpact('power',G.x,G.y,G.root?1.25:0.82);
+      if(!G.root)G.age=G.life+1;
+      else G.energy=Math.max(0.28,G.energy*0.35);
+    }
+    let orbitHits=0;
+    for(const o of G.orbiters){
+      const ox=G.x+Math.cos(o.a)*o.r, oy=G.y+Math.sin(o.a)*o.r;
+      if((ox-x)**2+(oy-y)**2<R2){
+        if(orbitHits++<8)addElementImpact('power',ox,oy,0.20);
+        /* thrown through the whole band, never piled at the rim */
+        o.r=rand(38,100)*G.scale; o.a=rand(0,TAU); o.blessed=0; o.fresh=true;
+      }
+    }
+    for(let i=G.out.length-1;i>=0;i--){
+      const q=G.out[i]; if((q.x-x)**2+(q.y-y)**2<R2)G.out.splice(i,1);
+    }
+  }
+  for(let i=goldStart-1;i>=0;i--){
+    const m=golds[i];if((m.x-x)**2+(m.y-y)**2<R2)golds.splice(i,1);
+  }
+  for(let i=ferments.length-1;i>=0;i--){
+    const m=ferments[i];if((m.x-x)**2+(m.y-y)**2<R2)ferments.splice(i,1);
+  }
+}
+function drawStarBursts(){
+  for(let i=starBursts.length-1;i>=0;i--){
+    const b=starBursts[i]; b.age++;
+    if(b.age>b.life){starBursts.splice(i,1);continue;}
+    const q=b.age/b.life, a=(1-q)*(1-q);
+    /* The blast no longer expands linearly. Real release is fast then stalls:
+       the front decelerates as it does work on the field it moves into. */
+    const ease=1-Math.pow(1-q,2.6);
+    const r=16+ease*(b.maxR||205);
+    X.save(); X.globalCompositeOperation='lighter';
+
+    /* 1. THE FLASH — brief, nearly white, over in a few frames. It is not the
+       explosion; it is the moment before the explosion is legible. */
+    if(q<0.13){
+      const fa=Math.pow(1-q/0.13,2);
+      let fg=X.createRadialGradient(b.x,b.y,0,b.x,b.y,r*0.85);
+      fg.addColorStop(0,'rgba(255,255,255,'+(0.95*fa)+')');
+      fg.addColorStop(0.4,'rgba(255,252,225,'+(0.55*fa)+')');
+      fg.addColorStop(1,'rgba(255,230,170,0)');
+      X.fillStyle=fg;X.beginPath();X.arc(b.x,b.y,r*0.85,0,TAU);X.fill();
+    }
+
+    /* 2. THE THERMAL CORE — a fractured perimeter, hot center, steep falloff.
+       It cools through its colors instead of merely fading: white to gold to
+       ember, so the eye reads temperature dropping rather than opacity. */
+    const edge=b.edge&&b.edge.length?b.edge:Array.from({length:24},(_,j)=>0.82+0.16*Math.sin(j*2.17+b.x*0.013+b.y*0.009));
+    X.save();X.beginPath();
+    for(let j=0;j<edge.length;j++){
+      const an=j*TAU/edge.length;
+      /* the perimeter roughens as it expands: instability grows with radius */
+      const wob=1+(edge[j]-0.9)*(0.5+1.5*q);
+      const er=r*edge[j]*wob;
+      const ex=b.x+Math.cos(an)*er,ey=b.y+Math.sin(an)*er;
+      if(j===0)X.moveTo(ex,ey);else X.lineTo(ex,ey);
+    }
+    X.closePath();X.clip();
+    const cool=Math.min(1,q*1.5);
+    let g=X.createRadialGradient(b.x,b.y,0,b.x,b.y,r*1.08);
+    g.addColorStop(0,'rgba('+Math.floor(lerp(255,255,cool))+','+Math.floor(lerp(255,150,cool))+','+Math.floor(lerp(240,40,cool))+','+Math.min(1,2.2*a)+')');
+    g.addColorStop(0.10,'rgba(255,'+Math.floor(lerp(248,120,cool))+','+Math.floor(lerp(145,20,cool))+','+(0.92*a)+')');
+    g.addColorStop(0.34,'rgba('+Math.floor(lerp(255,190,cool))+','+Math.floor(lerp(138,40,cool))+',30,'+(0.42*a)+')');
+    g.addColorStop(1,'rgba(150,12,0,0)');
+    X.fillStyle=g;X.fillRect(b.x-r*1.15,b.y-r*1.15,r*2.3,r*2.3);X.restore();
+
+    /* 3. THE SHOCK — a thin front that outruns the light and thins as it goes.
+       This is what makes an impact read as an event with a boundary. */
+    if(q<0.62){
+      const sr=r*1.16, sa=Math.pow(1-q/0.62,1.7);
+      X.strokeStyle='rgba(255,242,205,'+(0.40*sa)+')';
+      X.lineWidth=Math.max(0.4,2.6*sa);
+      X.beginPath();
+      for(let j=0;j<=edge.length;j++){
+        const jj=j%edge.length, an=jj*TAU/edge.length;
+        const er=sr*(0.94+(edge[jj]-0.9)*0.7);
+        const ex=b.x+Math.cos(an)*er,ey=b.y+Math.sin(an)*er;
+        if(j===0)X.moveTo(ex,ey);else X.lineTo(ex,ey);
+      }
+      X.closePath();X.stroke();
+    }
+
+    /* A few unequal wedges break from the light. They are neither a regular
+       ring nor symmetrical spokes: each has its own reach, skew, and heat. */
+    for(const f of b.facets||[]){
+      const root=Math.min(18,r*0.12),tip=r*(0.58+0.48*f.reach),an=f.an+f.skew*q;
+      const bx=b.x+Math.cos(an)*root,by=b.y+Math.sin(an)*root;
+      const tx2=b.x+Math.cos(an)*tip,ty2=b.y+Math.sin(an)*tip;
+      const side=Math.max(1.2,tip*f.spread);
+      const nx=-Math.sin(an)*side,ny=Math.cos(an)*side;
+      const fg=X.createLinearGradient(bx,by,tx2,ty2);
+      fg.addColorStop(0,'rgba(255,248,180,'+(0.38*a)+')');
+      fg.addColorStop(0.42,f.warm>0.5?'rgba(255,178,48,'+(0.24*a)+')':'rgba(255,78,24,'+(0.20*a)+')');
+      fg.addColorStop(1,'rgba(255,30,0,0)');
+      X.fillStyle=fg;X.beginPath();X.moveTo(bx+nx,by+ny);X.lineTo(tx2,ty2);X.lineTo(bx-nx*0.55,by-ny*0.55);X.closePath();X.fill();
+    }
+
+    /* 4. THE SMOLDER — after the light has gone the ground stays warm. A dim
+       ember field that outlives the blast and fades without expanding. */
+    if(q>0.35){
+      const sa=Math.sin(Math.min(1,(q-0.35)/0.65)*Math.PI)*0.5;
+      let mg=X.createRadialGradient(b.x,b.y,0,b.x,b.y,r*0.55);
+      mg.addColorStop(0,'rgba(255,88,26,'+(0.20*sa)+')');
+      mg.addColorStop(1,'rgba(120,10,0,0)');
+      X.fillStyle=mg;X.beginPath();X.arc(b.x,b.y,r*0.55,0,TAU);X.fill();
+    }
+
+    for(const d of b.debris||[]){
+      d.px=d.x; d.py=d.y; d.x+=d.vx; d.y+=d.vy;
+      d.vx*=d.drag; d.vy=d.vy*d.drag+(d.gravity==null?0.008:d.gravity);d.rot=(d.rot||0)+(d.spin||0);
+      /* ejecta cools as it flies and sheds what it cannot hold */
+      if(q>0.2&&q<0.8&&Math.random()<0.012)
+        golds.push({x:b.x+d.x,y:b.y+d.y,age:0,life:rand(60,120),vy:-rand(0.2,0.6),vx:rand(-0.3,0.3)});
+      const da=Math.max(0,a*(0.34+0.66*d.warm));
+      const kind=d.kind||'needle',speed=Math.max(0.3,Math.hypot(d.vx,d.vy)),an=kind==='needle'?Math.atan2(d.vy,d.vx):(d.rot||0);
+      X.save();X.translate(b.x+d.x,b.y+d.y);X.rotate(an);
+      if(kind==='shard'){
+        const sz=d.sz*(0.7+0.65*a),stretch=d.stretch||1.6;
+        X.fillStyle=d.warm>0.58?'rgba(255,230,125,'+(0.78*da)+')':'rgba(255,82,26,'+(0.66*da)+')';
+        X.beginPath();X.moveTo(sz*stretch,0);X.lineTo(-sz*0.45,sz*0.72);X.lineTo(-sz*1.05,-sz*0.18);X.lineTo(sz*0.12,-sz*0.54);X.closePath();X.fill();
+        X.strokeStyle='rgba(255,252,214,'+(0.34*da)+')';X.lineWidth=0.4;X.stroke();
+      }else{
+        const len=Math.max(2.5,speed*(d.stretch||4.2)*(0.48+0.72*a)),wid=Math.max(0.35,d.sz*(0.30+0.42*a));
+        X.fillStyle=d.warm>0.56?'rgba(255,247,168,'+(0.82*da)+')':'rgba(255,100,28,'+(0.68*da)+')';
+        X.beginPath();X.moveTo(len*0.30,0);X.lineTo(-len*0.70,wid);X.lineTo(-len,-wid*0.24);X.lineTo(-len*0.55,-wid);X.closePath();X.fill();
+      }
+      X.restore();
+    }
+    X.restore();
+  }
+}
+function starTouchesWorld(f,x,y,hx,hy,tx,ty){
+  if(!f.hit)f.hit={};
+  if(f.energy==null)f.energy=1;
+  const spend=(c)=>{f.energy=Math.max(0,f.energy-c);};
+  const near=(ax,ay,r)=>f.energy>0&&(ax-x)**2+(ay-y)**2<r*r;
+  /* A core interception and a later spatial skirt pass are two views of the
+     same contact. Remember the owner so one star cannot charge it twice in a
+     single frame. */
+  const shieldedOwners=new Set();
+  if(!f.hit.heart&&near(hx,hy,26)){
+    f.hit.heart=1;
+    if((heart.skirt||[]).length>2){
+      /* the dress meets the light first: gathered law spent as shield */
+      const torn=spendLawSkirt(heart,hx,hy,1.05,Math.min(3,heart.skirt.length));
+      spend(0.035*torn);shieldedOwners.add(heart);
+      addElementImpact('temple',hx,hy+10,0.5);
+    } else {
+      heart.shock=1;addElementImpact('heart',hx,hy,0.82);scatterLawSkirt(heart,hx,hy,1.05,0.24);
+      spend(0.12);
+    }
+  }
+  if(!f.hit.love&&near(love.x,love.y,20)){
+    f.hit.love=1;love.shock=1;love.hitVx+=(love.x-x)*0.12;love.hitVy+=(love.y-y)*0.12;addElementImpact('love',love.x,love.y,0.84);
+    love.stun=Math.max(love.stun,90); /* dazzled by the passing light */
+    spend(0.10);
+    for(let k=0;k<4;k++)golds.push({x:love.x+rand(-18,18),y:love.y+rand(-14,14),age:0,life:rand(110,190),vy:-rand(0.4,0.9)});
+  }
+  if(f.energy>0&&!f.hit.gaze&&inGaze(x,y,0.13)){
+    /* the beam crossing raw radiance: a flare of gold where they touch, the aim jarred */
+    f.hit.gaze=1;love.shock=Math.max(love.shock,0.5);love.gazeTarget+=rand(-0.65,0.65);addElementImpact('love',x,y,0.48);
+    for(let k=0;k<3;k++)golds.push({x:x+rand(-10,10),y:y+rand(-10,10),age:0,life:rand(100,170),vy:-rand(0.4,0.8)});
+  }
+  if(!f.hit.temple&&near(tx,ty,24)){
+    f.hit.temple=1;temple.shock=1;addElementImpact('temple',tx,ty,0.88);spend(0.08);
+  }
+
+  for(let i=daughters.length-1;i>=0;i--){
+    const h=daughters[i];if(near(h.x,h.y,11)){
+      if((h.skirt||[]).length>2){
+        const torn=spendLawSkirt(h,h.x,h.y,0.42,Math.min(2,h.skirt.length));
+        addElementImpact('temple',h.x,h.y+4,0.42);spend(0.035*torn);shieldedOwners.add(h);continue;
+      }
+      addElementImpact('heart',h.x,h.y,0.58);
+      golds.push({x:h.x,y:h.y,age:0,life:rand(140,220),vy:-rand(0.6,1.1)}); /* her fire returns upward */
+      daughters.splice(i,1);spend(0.10);
+    }
+  }
+  for(let i=heart.sparks.length-1,cut=0;i>=0&&cut<4;i--){
+    const s=heart.sparks[i];if(near(s.x,s.y,7)){addElementImpact('heart',s.x,s.y,0.16);heart.sparks.splice(i,1);cut++;spend(0.008);}
+  }
+  for(let i=temple.pts.length-1,cut=0;i>=0&&temple.pts.length>3&&cut<5;i--){
+    const p=temple.pts[i],wx=tx+p.x,wy=ty+p.y;if(near(wx,wy,8)){
+      temple.shock=Math.max(temple.shock,0.52);addElementImpact('temple',wx,wy,0.20);temple.pts.splice(i,1);cut++;spend(0.014);
+    }
+  }
+  for(let i=embers.length-1;i>=0;i--){
+    const e=embers[i],wx=tx+e.x,wy=ty+e.y;if(near(wx,wy,e.kind==='goddess'?17:9)){
+      if(e.kind==='goddess'&&(e.skirt||[]).length>2){
+        /* Her real law circles receive the descent before her red core does. */
+        const torn=spendLawSkirt(e,wx,wy-3*(e.scale||1),0.62*(e.scale||1),Math.min(3,e.skirt.length));
+        addElementImpact('goddess',wx,wy,0.72);spend(0.035*torn);shieldedOwners.add(e);continue;
+      }
+      if(e.kind==='goddess')addElementImpact('goddess',wx,wy,1);
+      else addElementImpact(e.kind==='star'?'star':'heart',wx,wy,0.42);
+      embers.splice(i,1);spend(e.kind==='goddess'?0.12:0.04);
+    }
+  }
+  for(let gi=0;gi<gyres.length;gi++){
+    const G=gyres[gi];
+    if(!f.hit['power'+gi]&&near(G.x,G.y,22*G.scale+7)){
+      f.hit['power'+gi]=1;G.shock=1;G.energy=Math.max(0.35,G.energy*0.58);addElementImpact('power',G.x,G.y,G.root?0.92:0.66);
+      if(!G.root)G.age+=Math.floor(G.life*0.22);
+      spend(0.12);
+    }
+    for(const o of G.orbiters){
+      const ox=G.x+Math.cos(o.a)*o.r,oy=G.y+Math.sin(o.a)*o.r;
+      if(near(ox,oy,6)){o.r+=rand(24,52);o.a+=rand(-0.4,0.4);o.blessed=0;o.fresh=true;addElementImpact('power',ox,oy,0.16);spend(0.006);}
+    }
+  }
+
+  const skirts=[{o:heart,x:hx,y:hy,s:1.05}];
+  for(const h of daughters)skirts.push({o:h,x:h.x,y:h.y,s:0.42});
+  for(const e of embers)if(e.kind==='goddess')skirts.push({o:e,x:tx+e.x,y:ty+e.y-3*(e.scale||1),s:0.62*(e.scale||1)});
+  for(const z of skirts){
+    if(shieldedOwners.has(z.o))continue;
+    const pts=lawSkirtPositions(z.x,z.y,z.s,z.o.skirt||[]);
+    for(let i=pts.length-1;i>=0;i--)if(near(pts[i].x,pts[i].y,6)){
+      addElementImpact('temple',pts[i].x,pts[i].y,0.18);
+      skirtRain.push({x:pts[i].x,y:pts[i].y,vx:rand(-0.8,0.8),vy:rand(-0.6,0),age:0,life:rand(50,110),ice:pts[i].n&&pts[i].n.ice});
+      z.o.skirt.splice(i,1);
+      spend(0.03);
+    }
+  }
+}
+/* the sky is impartial among the living, but it does not waste its tithe on
+   empty ground: what returns falls toward one of them, or very near. */
+function launchFall(){
+  if(!stars.length)return;
+  /* Nothing calls a star down. One simply happens to be closest to a mass when
+     its own drift can no longer carry it past — the fall is the end of an
+     orbit, so the star that falls is the one already deepest in a well. */
+  const [fhx,fhy]=pHeart();
+  const cand=[[fhx,fhy],[love.x,love.y],[tPos.x,tPos.y]];
+  for(const G of gyres)cand.push([G.x,G.y]);
+  let best=-1,bd=1e9,bc=null;
+  for(let i=0;i<stars.length;i++){
+    for(const c of cand){
+      const d=(c[0]-stars[i].x)**2+(c[1]-stars[i].y)**2;
+      if(d<bd){bd=d;best=i;bc=c;}
+    }
+  }
+  if(best<0)return;
+  const st=stars.splice(best,1)[0];
+  const fx=Math.min(W*0.94,Math.max(W*0.06,bc[0]+rand(-45,45)));
+  const fy=Math.min(H*0.94,Math.max(H*0.06,bc[1]+rand(-45,45)));
+  fallers.push({sx:st.x,sy:st.y,tx:fx,ty:fy,t:0,energy:1});
+}
+function updateStarfall(hx,hy,tx,ty){
+  if(every(2400,601) && stars.length>12)launchFall();
+  for(let i=fallers.length-1;i>=0;i--){
+    const f=fallers[i];
+    /* gold × green: sight cherishes falling light — beheld, it falls slower,
+       and its road turns to gold */
+    const beheld=f.lx!==undefined&&inGaze(f.lx,f.ly,0.2);
+    f.t+=beheld?0.0045:0.006;
+    const e=f.t*f.t*(3-2*f.t);
+    const arc=Math.sin(f.t*Math.PI)*60;
+    const x=lerp(f.sx,f.tx,e), y=lerp(f.sy,f.ty,e)-arc;
+    f.lx=x; f.ly=y;
+    if(beheld&&tick%9===0)
+      golds.push({x:x+rand(-9,9),y:y+rand(-9,9),age:0,life:rand(100,170),vy:-rand(0.4,0.9)});
+    /* gold × magenta: rot pulls at grace — the road bends, and close enough
+       the tithe is stolen whole: devoured mid-fall, never landing */
+    let eaten=false;
+    for(const G of gyres){
+      const gd=Math.hypot(G.x-x,G.y-y);
+      if(gd<260*G.scale&&f.t>0.1&&f.t<0.9){
+        f.tx=lerp(f.tx,G.x,0.014); f.ty=lerp(f.ty,G.y,0.014);
+      }
+      if(gd<34*G.scale+8&&f.t>0.15){
+        G.energy=Math.min(2.2,G.energy+0.9); G.shock=1;
+        sfx('devour');
+        addElementImpact('power',x,y,1.3);
+        PX.fillStyle='rgba(90,15,80,0.5)';
+        PX.beginPath(); PX.arc(x,y,4,0,TAU); PX.fill();
+        fallers.splice(i,1); eaten=true; break;
+      }
+    }
+    if(eaten)continue;
+    /* gold × blue: passing ice refracts the descent into small white glints */
+    if(tick%7===0){
+      for(const p of temple.pts){
+        if(p.kind!=='ice')continue;
+        const wx=tx+p.x, wy=ty+p.y;
+        if((wx-x)**2+(wy-y)**2<60*60){ addElementImpact('ice',wx,wy,0.15); break; }
+      }
+    }
+    starTouchesWorld(f,x,y,hx,hy,tx,ty);
+    /* golden descent */
+    let g=X.createRadialGradient(x,y,0,x,y,14);
+    g.addColorStop(0,'rgba(255,245,140,0.9)');
+    g.addColorStop(1,'rgba(255,200,0,0)');
+    X.fillStyle=g; X.beginPath(); X.arc(x,y,14,0,TAU); X.fill();
+    X.strokeStyle='rgba(255,240,150,0.35)'; X.lineWidth=1;
+    X.beginPath(); X.moveTo(lerp(f.sx,f.tx,Math.max(0,e-0.05)), lerp(f.sy,f.ty,Math.max(0,e-0.05))-Math.sin(Math.max(0,f.t-0.05)*Math.PI)*60);
+    X.lineTo(x,y); X.stroke();
+    if(f.t>=1){
+      starImpact(f.tx,f.ty,hx,hy,tx,ty,f.energy);
+      fallers.splice(i,1);
+    }
+  }
+  drawStarBursts();
+  drawElementImpacts();
+}
+function makeStar(x,y,vx,vy){
+  const a=rand(0,TAU),d=rand(0.05,0.28);
+  return {x,y,vx:(vx||0)+Math.cos(a)*d,vy:(vy||0)+Math.sin(a)*d,
+    ph:rand(0,TAU),sp:rand(0.02,0.06),sz:rand(0.7,1.6),mass:rand(0.7,1.3)};
+}
+/* There is no top in space, and no star is summoned anywhere. Each drifts on
+   the momentum it was born with and is bent only by the four masses: heart,
+   sight, law, and the turning. Attraction, not attachment — a star that falls
+   through a well leaves the other side and keeps going. */
+function updateStars(hx,hy,tx,ty){
+  const wells=[[hx,hy,26],[love.x,love.y,20],[tx,ty,24]];
+  for(const G of gyres)wells.push([G.x,G.y,30*G.scale]);
+  for(const st of stars){
+    if(st.vx===undefined){st.vx=rand(-0.12,0.12);st.vy=rand(-0.12,0.12);st.mass=rand(0.7,1.3);}
+    for(const w of wells){
+      const dx=w[0]-st.x, dy=w[1]-st.y, d2=dx*dx+dy*dy;
+      if(d2>1e6||d2<4)continue;
+      const d=Math.sqrt(d2), f=w[2]*0.010/Math.max(d2,900);
+      st.vx+=dx/d*f*st.mass; st.vy+=dy/d*f*st.mass;
+    }
+    st.x+=st.vx; st.y+=st.vy;
+    st.vx*=0.9995; st.vy*=0.9995;
+    const sp=Math.hypot(st.vx,st.vy);
+    if(sp>1.4){st.vx*=1.4/sp;st.vy*=1.4/sp;}
+    /* the field has no edge either: what leaves one side returns on the other */
+    if(st.x<-8)st.x+=W+16; else if(st.x>W+8)st.x-=W+16;
+    if(st.y<-8)st.y+=H+16; else if(st.y>H+8)st.y-=H+16;
+  }
+}
+function drawStars(){
+  for(const st of stars){
+    const tw=0.45+0.55*Math.sin(tick*st.sp+st.ph);
+    X.fillStyle='rgba(255,238,140,'+(0.85*tw)+')';
+    X.beginPath(); X.arc(st.x,st.y,st.sz*tw+0.3,0,TAU); X.fill();
+    if(st.sz>1.25&&tw>0.7){
+      /* a bright star swells rather than sprouting spikes: the cross is a
+         camera artifact, not something a light does. */
+      X.save(); X.globalCompositeOperation='lighter';
+      let hg=X.createRadialGradient(st.x,st.y,0,st.x,st.y,st.sz*3.2+2.2);
+      hg.addColorStop(0,'rgba(255,246,190,'+(0.34*tw)+')');
+      hg.addColorStop(1,'rgba(255,220,120,0)');
+      X.fillStyle=hg; X.beginPath(); X.arc(st.x,st.y,st.sz*3.2+2.2,0,TAU); X.fill();
+      X.restore();
+    }
+  }
+}
+
+/* ============ main ============ */
+X.save();X.setTransform(1,0,0,1,0,0);X.fillStyle='#000';X.fillRect(0,0,VW,VH);X.restore();
+function frame(){
+  tick++;
+  X.save();X.setTransform(1,0,0,1,0,0);
+  X.fillStyle='rgba(0,0,0,0.16)';X.fillRect(0,0,VW,VH);X.restore();
+  X.setTransform(viewScale,0,0,viewScale,viewDx,viewDy);
+  /* the record is held at backing resolution and presented at world size */
+  X.imageSmoothingQuality='high';
+  X.drawImage(P,0,0,bakeW,bakeH,0,0,W,H);
+  SX.globalCompositeOperation='destination-out';
+  SX.fillStyle='rgba(0,0,0,0.065)'; SX.fillRect(0,0,W,H);
+  SX.globalCompositeOperation='source-over';
+  X.save(); X.globalAlpha=0.30; X.drawImage(S,0,0,bakeW,bakeH,0,0,W,H); X.restore();
+  let [hx,hy]=pHeart(); const [tx,ty]=pTemple(), [px,py]=pPower();
+  if(meetT>0){
+    /* pilgrimage: for a while, the self walks the law's ground */
+    meetT--;
+    const mk=Math.min(1,(1100-meetT)/140)*Math.min(1,meetT/140)*0.85;
+    const ma=tick*0.0012;
+    hx=lerp(hx,tx+Math.cos(ma)*150,mk);
+    hy=lerp(hy,ty+Math.sin(ma)*150,mk);
+  }
+
+  tPos.x=tx; tPos.y=ty;
+  updateHeart(hx,hy);
+  updateLove([[hx,hy],[tx,ty],[px,py]]);
+  updateRefraction();
+  updateTemple(tx,ty);
+  updateGyres(px,py);
+  updateStars(hx,hy,tx,ty);
+  growLoveSkirt(tx,ty);
+
+  drawStars();
+  drawTemple(tx,ty);
+  drawRefraction();
+  drawGyres();
+  drawHeart(hx,hy);
+  contacts(hx,hy,tx,ty);
+  heartTempleSeam(hx,hy,tx,ty);
+  updateGoddessJudgment(tx,ty);
+  updateSkirtRain();
+  /* the derived and the displaced draw above the bodies that produced them:
+     magenta is a relation between red and blue, and the glints are heat that
+     has already left the ice. neither is a body, so neither is occluded. */
+  updateMagentas();
+  updateGlints();
+  attSmooth=lerp(attSmooth,attendance,0.05);
+  updateStarfall(hx,hy,tx,ty);
+  drawLove();
+  /* the arrivals stand above all of it */
+  updateBride(tx,ty);
+  updateAggressor(tx,ty);
+
+  if(tick%45===0){
+    document.getElementById('tally').innerHTML =
+      '<span style="color:#68f">law '+temple.pts.length+'</span><br>'+
+      '<span style="color:#4dd">ice '+temple.iceCount+'</span><br>'+
+      '<span style="color:#f74">vess '+embers.filter(e=>e.kind!=='star').length+'</span><br>'+
+      '<span style="color:#fd6">ahika '+embers.filter(e=>e.kind==='star').length+'</span><br>'+
+      '<span style="color:#d5d">gyres '+gyres.length+'</span><br>'+
+      '<span style="color:#d66">hearts '+(daughters.length+1)+'</span><br>'+
+      '<span style="color:#ca2">stars '+stars.length+'</span>';
+  }
+}
+
+/* ============ autosave + seed terminal ============ */
+const SAVE_KEY='leaf_save_v1';
+let seedName='';
+let rngState=0;
+function hash32(s){let h=1779033703;for(let i=0;i<s.length;i++){h=Math.imul(h^s.charCodeAt(i),3432918353);h=(h<<13)|(h>>>19);}return h>>>0;}
+function seededRandom(){
+  let a=rngState|0;a=(a+0x6D2B79F5)|0;rngState=a>>>0;
+  let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;
+  return((t^(t>>>14))>>>0)/4294967296;
+}
+function applySeed(s,state){
+  seedName=s;rngState=Number.isFinite(state)?state>>>0:hash32(s||String(Date.now()));Math.random=seededRandom;applyLore();
+  if(typeof setPaths==='function')setPaths();
+}
+function randomSeed(){
+  if(typeof crypto!=='undefined'&&crypto.getRandomValues){
+    const a=new Uint32Array(2);crypto.getRandomValues(a);return a[0].toString(36)+a[1].toString(36);
+  }
+  return Date.now().toString(36)+'-'+Math.floor(Math.random()*0xffffffff).toString(36);
+}
+function resetWorld(){
+  temple.pts.length=0; temple.nextAt=0; temple.iceCount=0;temple.shock=0;
+  gyres.length=0; gyres.push(makeGyre(0,0,1,true));
+  daughters.length=0; heart.sparks.length=0; heart.rings.length=0;heart.skirt.length=0;heart.shock=0;
+  golds.length=0; ferments.length=0; stars.length=0; fallers.length=0;
+  starBursts.length=0;elementFragments.length=0;elementFlashes.length=0;seamBursts.length=0;embers.length=0;
+  love.init=false; love.hitVx=0; love.hitVy=0; love.shock=0; love.stun=0; tick=0;
+  meetT=0; bondSeen=0; bondAlone=0;
+  skirtRain.length=0; petrifying=null; love.shatter=null;
+  magentas.length=0; glints.length=0; love.skirt=[];
+  bride.on=false; bride.t=0; bride.cool=0; bride.x=0; bride.y=0;
+  aggressor.on=false; aggressor.t=0; aggressor.cool=0;
+  aggressor.vx=0; aggressor.vy=0; aggressor.target=null;
+  PX.save();PX.setTransform(1,0,0,1,0,0);PX.clearRect(0,0,P.width,P.height);PX.restore();
+  SX.save();SX.setTransform(1,0,0,1,0,0);SX.clearRect(0,0,S.width,S.height);SX.restore();
+  X.save();X.setTransform(1,0,0,1,0,0);X.fillStyle='#000';X.fillRect(0,0,VW,VH);X.restore();
+}
+function snapshot(){
+  const petrifySave=petrifying?{
+    gyre:gyres.indexOf(petrifying.G),goddess:embers.indexOf(petrifying.gd),t:petrifying.t
+  }:null;
+  return JSON.stringify({
+    schema:3,tick,seed:seedName,rngState,world:{w:W,h:H},
+    temple:{pts:temple.pts,nextAt:temple.nextAt,iceCount:temple.iceCount,shock:temple.shock},
+    heart:{rings:heart.rings,sparks:heart.sparks,skirt:heart.skirt,shock:heart.shock},
+    love:{x:love.x,y:love.y,init:love.init,gazeA:love.gazeA,gazeTarget:love.gazeTarget,
+      hitVx:love.hitVx,hitVy:love.hitVy,shock:love.shock,stun:love.stun,shatter:love.shatter||null},
+    gyres:gyres.map(g=>({x:g.x,y:g.y,scale:g.scale,root:g.root,energy:g.energy,shock:g.shock,
+      age:g.age,life:g.life,petrify:g.petrify||0,orbiters:g.orbiters,out:g.out})),
+    daughters:daughters,
+    golds,ferments,stars,fallers,
+    embers:embers,
+    skirtRain,petrifying:petrifySave,
+    magentas,glints,
+    loveSkirt:love.skirt||[],
+    bride:{on:bride.on,x:bride.x,y:bride.y,t:bride.t,cool:bride.cool},
+    aggressor:{on:aggressor.on,x:aggressor.x,y:aggressor.y,t:aggressor.t,
+      cool:aggressor.cool,vx:aggressor.vx,vy:aggressor.vy,
+      target:aggressor.target?gyres.indexOf(aggressor.target):-1},
+    bake:{w:bakeW,h:bakeH},
+    relations:{attendance,attSmooth,bondSeen,bondAlone,meetT,attendHue,sndOn,pace},
+    effects:{starBursts,elementFragments,elementFlashes,seamBursts},
+    png:P.toDataURL('image/png'),
+    silkPng:S.toDataURL('image/png')
+  });
+}
+function restore(json){
+  try{
+    const d=JSON.parse(json);
+    if(d.world&&d.world.w&&d.world.h)adoptLogicalWorld(d.world.w,d.world.h);
+    if(Object.prototype.hasOwnProperty.call(d,'seed'))applySeed(d.seed,d.rngState);
+    tick=d.tick||0;
+    const ts=d.temple||{},hs=d.heart||{},rs=d.relations||{},fx=d.effects||{};
+    temple.pts.length=0; for(const p of ts.pts||d.pts||[])temple.pts.push(p);
+    temple.nextAt=ts.nextAt||0;temple.iceCount=ts.iceCount||0;temple.shock=ts.shock||0;
+    heart.rings.length=0;for(const r of hs.rings||[])heart.rings.push(r);
+    heart.sparks.length=0;for(const s of hs.sparks||[])heart.sparks.push(s);
+    heart.skirt.length=0;for(const n of hs.skirt||d.heartSkirt||[])heart.skirt.push(n);
+    heart.shock=hs.shock||0;
+    if(d.love){
+      love.x=d.love.x||0;love.y=d.love.y||0;love.init=!!d.love.init;
+      love.gazeA=d.love.gazeA||0;love.gazeTarget=d.love.gazeTarget||0;
+      love.hitVx=d.love.hitVx||0;love.hitVy=d.love.hitVy||0;
+      love.shock=d.love.shock||0;love.stun=d.love.stun||0;love.shatter=d.love.shatter||null;
+    }else{
+      love.init=false;love.hitVx=0;love.hitVy=0;love.shock=0;love.stun=0;love.shatter=null;
+    }
+    gyres.length=0;
+    for(const g of d.gyres||[{x:0,y:0,scale:1,root:true,energy:1,age:0,life:1e9}]){
+      const G2=makeGyre(g.x,g.y,g.scale,g.root);
+      G2.energy=g.energy==null?1:g.energy;G2.shock=g.shock||0;G2.age=g.age||0;G2.life=g.life||G2.life;
+      G2.petrify=g.petrify||0;
+      if(Array.isArray(g.orbiters))G2.orbiters=g.orbiters.map(o=>({...o,trail:o.trail||[]}));
+      if(Array.isArray(g.out))G2.out=g.out;
+      gyres.push(G2);
+    }
+    if(!gyres.length)gyres.push(makeGyre(0,0,1,true));
+    daughters.length=0;for(const h of (d.daughters||[]).slice(0,5))daughters.push({...h,vx:h.vx||0,vy:h.vy||0,skirt:h.skirt||[],shock:h.shock||0});
+    golds.length=0;for(const g of d.golds||[])golds.push(g);
+    ferments.length=0;for(const f of d.ferments||[])ferments.push(f);
+    /* Legacy stars were fixed points pinned near a ceiling. Give them the
+       motion they always should have had, without moving them. */
+    stars.length=0;
+    for(const s of d.stars||[]){
+      if(s.vx===undefined){s.vx=rand(-0.12,0.12);s.vy=rand(-0.12,0.12);}
+      if(s.mass===undefined)s.mass=rand(0.7,1.3);
+      stars.push(s);
+    }
+    fallers.length=0;for(const f of d.fallers||[])fallers.push(f);
+    embers.length=0;
+    for(let i=0;i<(d.embers||[]).length;i++){
+      const e=d.embers[i],kind=e.kind||'ember';
+      const kept={...e,kind,scale:e.scale||rand(0.88,1.12),skirt:e.skirt||[]};
+      embers.push(kept);
+    }
+    skirtRain.length=0;for(const r of d.skirtRain||[])skirtRain.push(r);
+    starBursts.length=0;for(const b of fx.starBursts||[])starBursts.push(b);
+    elementFragments.length=0;for(const f of fx.elementFragments||[])elementFragments.push(f);
+    elementFlashes.length=0;for(const f of fx.elementFlashes||[])elementFlashes.push(f);
+    seamBursts.length=0;for(const b of fx.seamBursts||[])seamBursts.push(b);
+    attendance=rs.attendance||0;attSmooth=rs.attSmooth||0;bondSeen=rs.bondSeen||0;bondAlone=rs.bondAlone||0;meetT=rs.meetT||0;
+    attendHue=rs.attendHue==null?null:rs.attendHue;if(typeof rs.sndOn==='boolean')sndOn=rs.sndOn;
+    if(Number.isFinite(rs.pace))pace=Math.max(0.1,Math.min(500,rs.pace));
+    petrifying=null;
+    /* Saves made before these systems existed simply begin without them; the
+       world is not invalid for having lacked a bride. */
+    magentas.length=0; for(const m of d.magentas||[])magentas.push(m);
+    glints.length=0; for(const g of d.glints||[])glints.push(g);
+    love.skirt=Array.isArray(d.loveSkirt)?d.loveSkirt.slice():[];
+    const bsv=d.bride||{};
+    bride.on=!!bsv.on;bride.x=bsv.x||0;bride.y=bsv.y||0;
+    bride.t=bsv.t||0;bride.cool=bsv.cool||0;
+    const agv=d.aggressor||{};
+    aggressor.on=!!agv.on;aggressor.x=agv.x||0;aggressor.y=agv.y||0;
+    aggressor.t=agv.t||0;aggressor.cool=agv.cool||0;
+    aggressor.vx=agv.vx||0;aggressor.vy=agv.vy||0;
+    aggressor.target=(agv.target>=0&&gyres[agv.target])?gyres[agv.target]:null;
+    if(d.bake&&d.bake.w&&d.bake.h){ensureBacking(d.bake.w,d.bake.h);syncBakeTransform();}
+    if(d.petrifying&&gyres[d.petrifying.gyre]&&embers[d.petrifying.goddess])
+      petrifying={G:gyres[d.petrifying.gyre],gd:embers[d.petrifying.goddess],t:d.petrifying.t||0};
+    /* Reconstruction may consume randomness for legacy defaults. A schema-3
+       checkpoint resumes at the exact next chance event it originally had. */
+    if(Number.isFinite(d.rngState))rngState=d.rngState>>>0;
+    const restoreLayer=(src,ctx,canvas,legacy)=>{
+      ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.restore();
+      if(!src)return;
+      const img=new Image();img.onload=()=>{
+        /* Old saves predate explicit logical dimensions; their history bitmap
+           is the authoritative coordinate space. Adopt it without scaling state. */
+        if(legacy&&!d.world&&img.naturalWidth&&img.naturalHeight)adoptLogicalWorld(img.naturalWidth,img.naturalHeight);
+        /* A saved record may be larger than the present world. Keep it at its
+           own resolution: grow the backing store to hold it rather than
+           downsampling it to fit a small window. */
+        if(img.naturalWidth>bakeW||img.naturalHeight>bakeH){
+          ensureBacking(img.naturalWidth,img.naturalHeight);
+          syncBakeTransform();
+        }
+        ctx.save();ctx.setTransform(1,0,0,1,0,0);
+        ctx.drawImage(img,0,0,img.naturalWidth,img.naturalHeight,0,0,bakeW,bakeH);
+        ctx.restore();
+        if(legacy)removeLegacyFossilResidue();
+      };img.src=src;
+    };
+    restoreLayer(d.png,PX,P,true);restoreLayer(d.silkPng,SX,S,false);
+    return true;
+  }catch(e){return false;}
+}
+/* Older saves may already contain the stationary pale rings removed above.
+   They were flattened into the history bitmap, so erase only their two exact
+   blue-grey pigments; green traces, cyan gems, scars, and stains are outside
+   this deliberately narrow color test. */
+function removeLegacyFossilResidue(){
+  try{
+    const im=PX.getImageData(0,0,P.width,P.height),d=im.data;
+    for(let i=0;i<d.length;i+=4){
+      const r=d[i],g=d[i+1],b=d[i+2],a=d[i+3];
+      if(a>10&&r>=142&&r<=182&&g-r>=22&&g-r<=36&&b-g>=28&&b-g<=42)d[i+3]=0;
+    }
+    PX.putImageData(im,0,0);
+  }catch(e){}
+}
+let noticeTimer=0;
+function notice(text){
+  let n=document.getElementById('worldNotice');
+  if(!n){n=document.createElement('div');n.id='worldNotice';n.style.cssText='position:fixed;left:13px;bottom:14px;z-index:12;font:10px "Courier New",monospace;letter-spacing:.4px;color:#c86868;pointer-events:none;opacity:0;transition:opacity .3s';document.body.appendChild(n);}
+  n.textContent=text;n.style.opacity='0.85';
+  clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>{n.style.opacity='0';},2000);
+}
+function safeWorldName(){
+  return (seedName||'unnamed').replace(/[^a-z0-9_-]+/gi,'-').replace(/^-+|-+$/g,'').slice(0,48)||'unnamed';
+}
+function exportWorld(){
+  try{
+    const url=URL.createObjectURL(new Blob([snapshot()],{type:'application/json;charset=utf-8'}));
+    const a=document.createElement('a');a.href=url;a.download='leaf-'+safeWorldName()+'.json';
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(e){notice('save failed');}
+}
+function loadFromText(text){
+  const data=JSON.parse(text);
+  if(!data||typeof data!=='object'||!('tick' in data))throw new Error('invalid world');
+  resetWorld();
+  if(!restore(text))throw new Error('restore failed');
+  try{localStorage.setItem(SAVE_KEY,text);}catch(e){}
+  lineage=true;
+}
+function chooseWorldImport(){
+  const input=document.createElement('input');input.type='file';input.accept='.json,application/json';
+  input.addEventListener('change',async()=>{
+    try{if(input.files&&input.files[0])loadFromText(await input.files[0].text());}
+    catch(e){notice('load failed');}
+  },{once:true});
+  input.click();
+}
+/* Full-fidelity checkpoints include two PNG layers and live trail histories.
+   Saving them synchronously every few seconds would itself disturb the world. */
+setInterval(()=>{guardedSave();},30000);
+addEventListener('beforeunload',()=>{guardedSave();releaseLock();});
+
+/* one writer at a time: tabs take a heartbeat lock; only the holder saves.
+   a tab that isn't the save's own lineage never overwrites a far more developed world. */
+const LOCK_KEY=SAVE_KEY+'_lock';
+const TAB_ID=Math.random().toString(36).slice(2);
+let lockOwner=false, lineage=false;
+function heartbeat(){
+  try{
+    const l=JSON.parse(localStorage.getItem(LOCK_KEY)||'null');
+    const now=Date.now();
+    if(!l||now-l.t>6500||l.id===TAB_ID){
+      localStorage.setItem(LOCK_KEY,JSON.stringify({id:TAB_ID,t:now}));
+      lockOwner=true;
+    } else lockOwner=false;
+  }catch(e){lockOwner=true;}
+}
+function releaseLock(){
+  try{
+    const l=JSON.parse(localStorage.getItem(LOCK_KEY)||'null');
+    if(l&&l.id===TAB_ID)localStorage.removeItem(LOCK_KEY);
+  }catch(e){}
+}
+setInterval(heartbeat,2500); heartbeat();
+let localSaveHealthy=true;
+function guardedSave(){
+  if(!lockOwner)return;
+  try{
+    if(!lineage){
+      const ex=localStorage.getItem(SAVE_KEY);
+      if(ex){
+        const d=JSON.parse(ex);
+        if((d.tick||0)>tick+1500)return; /* an elder world lives in the slot; do not stomp it */
+      }
+    }
+    localStorage.setItem(SAVE_KEY,snapshot());
+    lineage=true;localSaveHealthy=true;
+  }catch(e){
+    if(localSaveHealthy)notice('autosave full · save to file');
+    localSaveHealthy=false;
+  }
+}
+function resetWithSeed(name){
+  try{localStorage.removeItem(SAVE_KEY);}catch(e){}
+  applySeed(name);resetWorld();lineage=true;guardedSave();
+}
+function resetWithRandomSeed(){resetWithSeed(randomSeed());}
+
+/* the terminal: press ` to open. type help to see the words. */
+const term=document.createElement('input');
+term.id='seedterm';
+term.placeholder='help';
+term.style.cssText='position:fixed;bottom:10px;left:12px;width:280px;background:rgba(0,0,0,0.7);'+
+ 'border:1px solid #26304a;color:#9fb8d8;font-family:"Courier New",monospace;font-size:11px;'+
+ 'padding:5px 8px;border-radius:3px;outline:none;display:none;z-index:9';
+document.body.appendChild(term);
+addEventListener('keydown',e=>{
+  if(e.key==='`'){
+    e.preventDefault();
+    term.style.display=term.style.display==='none'?'block':'none';
+    if(term.style.display==='block'){term.value=seedName?'seed '+seedName:'';term.focus();}
+    else term.blur();
+  } else if(e.key==='Enter'&&document.activeElement===term){
+    const v=term.value.trim();
+    const named=/^seed\s+(.+)$/i.exec(v);
+    if(v==='reset')resetWithRandomSeed();
+    else if(named&&named[1].trim())resetWithSeed(named[1].trim());
+    else if(v==='save')exportWorld();
+    else if(v==='load')chooseWorldImport();
+    else if(v==='fall'){ launchFall(); /* the sky tithes now — if it holds anything */ }
+    else if(v==='meet'){ meetT=1100; /* pilgrimage: she goes to the law */ }
+    else if(v==='attend'){ toggleWheel(); }
+    else if(v==='hush'){ sndOn=!sndOn; }
+    else if(/^(pace|speed)\b/i.test(v)){
+      /* pace <n> — compress elapsed time for the slow developments only.
+         `pace` alone reports where it stands; `pace 1` returns to true idle. */
+      const m2=/^(?:pace|speed)\s+([0-9]*\.?[0-9]+)$/i.exec(v);
+      if(m2){
+        pace=Math.max(0.1,Math.min(500,parseFloat(m2[1])));
+        notice('pace ×'+pace+(pace===1?' · true idle':''));
+      } else notice('pace ×'+pace+' · type: pace 20');
+    }
+    else if(v==='help'){ term.placeholder='seed <name> · save · load · reset · fall · meet · attend · hush · pace <n>'; }
+    else if(v){applySeed(v);resetWorld();lineage=true;}
+    term.style.display='none';term.blur();
+  } else if(e.key==='Escape'&&document.activeElement===term){
+    term.style.display='none';term.blur();
+  } else if(e.key==='c'&&document.activeElement!==term){
+    toggleWheel();
+  }
+});
+
+/* ============ the attendant ============
+   the first hand offered to the player: a ring of color. choose a hue and
+   LOVE attends what wears it — red the fires, gold the rising light, blue
+   the law, magenta the turning. green asks her to rest, gazing free.
+   the center releases her. press c, or tell the terminal: attend. */
+let attendHue=null, wheelOpen=false;
+const wheel=document.createElement('canvas');
+wheel.width=wheel.height=84;
+wheel.style.cssText='position:fixed;left:50%;bottom:14px;transform:translateX(-50%);width:84px;height:84px;'+
+ 'border-radius:50%;display:none;z-index:9;cursor:pointer;opacity:0.88';
+document.body.appendChild(wheel);
+function drawWheel(){
+  const wx=wheel.getContext('2d'); wx.clearRect(0,0,84,84);
+  for(let a=0;a<360;a+=3){
+    wx.beginPath(); wx.strokeStyle='hsl('+a+',85%,55%)'; wx.lineWidth=10;
+    wx.arc(42,42,32,(a-90)*Math.PI/180,(a-86.8)*Math.PI/180); wx.stroke();
+  }
+  wx.fillStyle='rgba(0,0,0,0.78)'; wx.beginPath(); wx.arc(42,42,22,0,TAU); wx.fill();
+  wx.font='8px "Courier New"'; wx.textAlign='center';
+  if(attendHue!=null){
+    const ar=(attendHue-90)*Math.PI/180;
+    wx.fillStyle='hsl('+attendHue+',90%,65%)';
+    wx.beginPath(); wx.arc(42+Math.cos(ar)*32,42+Math.sin(ar)*32,5,0,TAU); wx.fill();
+    wx.fillStyle='rgba(255,255,255,0.8)';
+    wx.fillText(Math.round(attendHue)+'°',42,45);
+  } else {
+    wx.fillStyle='rgba(255,255,255,0.45)';
+    wx.fillText('attend',42,45);
+  }
+}
+wheel.addEventListener('click',ev=>{
+  const r=wheel.getBoundingClientRect();
+  const dx=ev.clientX-(r.left+r.width/2), dy=ev.clientY-(r.top+r.height/2);
+  if(Math.hypot(dx,dy)*(84/r.width)<22) attendHue=null; /* the center releases her */
+  else attendHue=((Math.atan2(dy,dx)*180/Math.PI)+90+360)%360;
+  drawWheel();
+});
+function toggleWheel(){
+  wheelOpen=!wheelOpen;
+  wheel.style.display=wheelOpen?'block':'none';
+  if(wheelOpen)drawWheel();
+}
+/* ============ the seed is lore ============
+   a named world differs in its bones: how fast the heart gives, how large
+   the rot turns, how wide the law spaces its nodes, how restless the gaze. */
+let lore={beat:120,gyreScale:1,lattice:17,sweep:1};
+function applyLore(){
+  const h=hash32(seedName||'the-four-motions');
+  lore.beat=104+(h%33);
+  lore.gyreScale=0.9+((h>>>5)%26)/100;
+  lore.lattice=15+((h>>>10)%4); /* 15–18: must stay under the bond threshold */
+  lore.sweep=0.8+((h>>>15)%50)/100;
+  const phase=(name)=>hash32((seedName||'the-four-motions')+'|'+name)/4294967296*TAU;
+  pathPhases={heart:phase('heart'),love:phase('love'),temple:phase('temple'),power:phase('power')};
+}
+applyLore();
+let restored=false;
+try{const s=localStorage.getItem(SAVE_KEY);if(s){restored=restore(s);if(restored)lineage=true;}}catch(e){}
+if(!restored)applySeed('');
+worldReady=true;
+
+/* requestAnimationFrame stops when a tab is hidden. A worker supplies the
+   background pulse; visible rendering still uses the native animation clock. */
+let rafId=0, inFrame=false, backgroundClock=null, fallbackClock=0;
+function runFrame(){
+  if(inFrame)return;
+  inFrame=true;
+  try{frame();}finally{inFrame=false;}
+  if(!document.hidden)rafId=requestAnimationFrame(runFrame);
+}
+try{
+  const src='setInterval(function(){postMessage(0)},33)';
+  const url=URL.createObjectURL(new Blob([src],{type:'text/javascript'}));
+  backgroundClock=new Worker(url); URL.revokeObjectURL(url);
+  backgroundClock.onmessage=()=>{if(document.hidden)runFrame();};
+}catch(e){
+  fallbackClock=setInterval(()=>{if(document.hidden)runFrame();},33);
+}
+addEventListener('visibilitychange',()=>{
+  if(document.hidden)cancelAnimationFrame(rafId);
+  else {cancelAnimationFrame(rafId);rafId=requestAnimationFrame(runFrame);}
+});
+rafId=requestAnimationFrame(runFrame);
+</script>
+
+
+</body></html>

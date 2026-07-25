@@ -1,0 +1,9 @@
+# Ignore everything by default. Whitelist only what should ship to GitHub Pages.
+# The K-T folder holds a lot of internal household material; nothing goes public
+# unless it is explicitly re-enabled below.
+*
+
+# Public:
+!.gitignore
+!index.html
+!leaf_*.html
