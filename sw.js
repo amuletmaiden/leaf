@@ -2,12 +2,13 @@
    Integration Bridge injects named simulation systems into world pages and the
    Living Ledger enhancements into Council Ledger. */
 
-const CACHE = 'leaf-v18';
+const CACHE = 'leaf-v19';
 const SHELL = [
   './index.html',
   './council.html',
   './council-live.js',
   './council-ecology.js',
+  './council-chronicle.js',
   './leaf-hearth.js',
   './leaf-slots.js',
   './leaf-genealogy.js',
@@ -18,6 +19,7 @@ const SHELL = [
   './leaf-star-temperance.js',
   './leaf-new-goddesses.js',
   './leaf-temporal-concord.js',
+  './leaf-chronicle.js',
   './leaf-clock-of-power.js',
   './leaf-crown.js',
   './leaf-veil.js'
@@ -33,6 +35,7 @@ const NAMED_SYSTEMS = `<!-- LEAF NAMED SYSTEMS -->
 <script src="leaf-star-temperance.js"></script>
 <script src="leaf-new-goddesses.js"></script>
 <script src="leaf-temporal-concord.js"></script>
+<script src="leaf-chronicle.js"></script>
 <script src="leaf-clock-of-power.js"></script>
 <script src="leaf-crown.js"></script>
 <script src="leaf-veil.js"></script>
@@ -40,6 +43,7 @@ const NAMED_SYSTEMS = `<!-- LEAF NAMED SYSTEMS -->
 const COUNCIL_SYSTEM = `<!-- LEAF COUNCIL SYSTEM -->
 <script src="council-live.js"></script>
 <script src="council-ecology.js"></script>
+<script src="council-chronicle.js"></script>
 <!-- /LEAF COUNCIL SYSTEM -->`;
 
 async function installNamedSystems(response) {
