@@ -50,6 +50,16 @@
     try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { return null; }
   }
 
+  let lastWorldRaw = null, lastWorldData = null;
+  function latestWorld() {
+    let raw = null;
+    try { raw = localStorage.getItem('leaf_save_v1'); } catch (_) {}
+    if (raw === lastWorldRaw) return lastWorldData;
+    lastWorldRaw = raw;
+    try { lastWorldData = raw ? JSON.parse(raw) : null; } catch (_) { lastWorldData = null; }
+    return lastWorldData;
+  }
+
   const header = document.querySelector('header');
   const strip = document.createElement('div');
   strip.className = 'world-strip';
@@ -133,8 +143,12 @@
     });
   });
 
+  let auditVisible = false;
   const observer = new IntersectionObserver(entries => {
-    for (const e of entries) e.isIntersecting ? visible.add(e.target) : visible.delete(e.target);
+    for (const e of entries) {
+      if (e.target.id === 'lawAuditCanvas') auditVisible = e.isIntersecting;
+      else e.isIntersecting ? visible.add(e.target) : visible.delete(e.target);
+    }
   }, { rootMargin: '120px' });
   cards.forEach(c => observer.observe(c));
 
@@ -170,7 +184,7 @@
   }
 
   function updateWorldReadout() {
-    const d = safeParse('leaf_save_v1');
+    const d = latestWorld();
     const orchard = safeParse('leaf_genealogy_v1');
     document.getElementById('worldSeed').textContent = d && d.seed ? d.seed : 'no recent autosave';
     document.getElementById('worldAge').textContent = d ? Number(d.tick || 0).toLocaleString('en-US') + ' ticks' : '—';
@@ -188,13 +202,16 @@
   function countSlots() {
     try {
       const req = indexedDB.open('leaf-pocket-worlds', 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('worlds')) db.createObjectStore('worlds');
+      };
       req.onerror = () => { liveState.slotCount = '—'; persist(); updateWorldReadout(); };
       req.onsuccess = () => {
         const db = req.result;
-        const names = Array.from(db.objectStoreNames);
-        if (!names.length) { liveState.slotCount = 0; persist(); updateWorldReadout(); return; }
-        const tx = db.transaction(names[0], 'readonly');
-        const count = tx.objectStore(names[0]).count();
+        if (!db.objectStoreNames.contains('worlds')) { liveState.slotCount = 0; persist(); updateWorldReadout(); return; }
+        const tx = db.transaction('worlds', 'readonly');
+        const count = tx.objectStore('worlds').count();
         count.onsuccess = () => { liveState.slotCount = count.result; persist(); updateWorldReadout(); };
       };
     } catch (_) { liveState.slotCount = '—'; }
@@ -233,10 +250,11 @@
       drawIcon(canvas, id);
       overlay(canvas.getContext('2d'), id, t);
     }
-    drawLawAudit(t);
+    if (auditVisible) drawLawAudit(t);
   }
 
   const auditCanvas = document.getElementById('lawAuditCanvas');
+  observer.observe(auditCanvas);
   function drawLawAudit(t) {
     if (!auditCanvas) return;
     const box = auditCanvas.getBoundingClientRect();
@@ -244,7 +262,7 @@
     if(auditCanvas.width!==w||auditCanvas.height!==h){auditCanvas.width=w;auditCanvas.height=h;}
     const x=auditCanvas.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);const W=box.width,H=box.height;x.fillStyle='#000';x.fillRect(0,0,W,H);x.globalCompositeOperation='lighter';
     const bodies=[{x:W*.18,y:H*.34,c:'#ff0000',m:8},{x:W*.76,y:H*.27,c:'#00ff00',m:7},{x:W*.70,y:H*.76,c:'#ff00ff',m:10}];
-    let bx=W*.50,by=H*.50,tw=22;for(const b of bodies){bx+=b.x*b.m;by+=b.y*b.m;tw+=b.m;}bx/=tw;by/=tw;
+    let bx=W*.50*22,by=H*.50*22,tw=22;for(const b of bodies){bx+=b.x*b.m;by+=b.y*b.m;tw+=b.m;}bx/=tw;by/=tw;
     const lawMass=18+12*(.5+.5*Math.sin(t*.25));const lx=W*.43+Math.sin(t*.18)*20,ly=H*.56+Math.cos(t*.14)*13;bx=(bx*35+lx*lawMass)/(35+lawMass);by=(by*35+ly*lawMass)/(35+lawMass);
     for(const b of bodies){x.strokeStyle=b.c+'55';x.beginPath();x.moveTo(b.x,b.y);x.lineTo(bx,by);x.stroke();x.fillStyle=b.c;x.beginPath();x.arc(b.x,b.y,4+b.m*.35,0,Math.PI*2);x.fill();}
     for(let i=0;i<28;i++){const a=i*2.4,r=10+i*3.4;x.fillStyle='rgba(0,200,255,'+(.18+.25*(i%4===0))+')';x.beginPath();x.arc(lx+Math.cos(a+t*.04)*r,ly+Math.sin(a+t*.04)*r,1.5+(i%5===0?1.2:0),0,Math.PI*2);x.fill();}
@@ -264,7 +282,9 @@
     return out;
   };
 
-  countSlots(); updateWorldReadout(); setInterval(updateWorldReadout, 5000); requestAnimationFrame(animate);
+  countSlots(); updateWorldReadout();
+  addEventListener('storage', event => { if (event.key === 'leaf_save_v1' || event.key === 'leaf_genealogy_v1') updateWorldReadout(); });
+  setInterval(updateWorldReadout, 15000); requestAnimationFrame(animate);
 
   globalThis.LEAF_COUNCIL = {
     officialName: 'Living Ledger',
