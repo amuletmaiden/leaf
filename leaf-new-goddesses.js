@@ -1,6 +1,7 @@
 /* ==========================================================================
    RETROGRADE HUNGER — HEART · POWER · ICE
    SCAVENGER'S HEM — LOVE · POWER
+   TEMPORAL CONCORD — consequential lives follow world-time
    Neither has a command or announcement. Both are conditions of the world.
    ========================================================================== */
 (function(){
@@ -9,19 +10,21 @@ const eater={on:false,x:0,y:0,vx:0,vy:0,age:0,life:0,cool:0,turn:0,eaten:0,dying
 const scav={on:false,x:0,y:0,vx:0,vy:0,age:0,life:0,cool:0,dying:0,gathered:0,garment:[],target:null,trail:[]};
 const num=(n,d=0)=>Number.isFinite(n)?n:d;
 const cap=(n,a,b)=>Math.max(a,Math.min(b,n));
-const span=(a,b)=>{try{return Math.max(900,slow(rand(a,b)))}catch(_){return(a+b)/2}};
-const dt=()=>{try{return cap(Math.sqrt(Math.max(.1,num(pace,1))),.45,7)}catch(_){return 1}};
+const span=(a,b)=>rand(a,b);
+const worldDt=()=>{try{return globalThis.LEAF_PACE?LEAF_PACE.step():Math.max(.1,num(pace,1))}catch(_){return 1}};
 function lawful(o){
   try{return globalThis.LEAF_LAW&&LEAF_LAW.isEnabled()?LEAF_LAW.lawfulnessAt(o.x,o.y)||0:0}catch(_){return 0}
 }
 function move(o,t,acc,max){
-  const m=dt();
-  if(t){const dx=t.x-o.x,dy=t.y-o.y,d=Math.hypot(dx,dy)||1;o.vx+=dx/d*acc*m;o.vy+=dy/d*acc*m}
-  const law=lawful(o),speed=Math.hypot(o.vx,o.vy);
-  if(law>.18&&speed>.001){const n=law>.68?12:8,u=TAU/n,a=Math.atan2(o.vy,o.vx),q=Math.round(a/u)*u,k=.025+law*.07;o.vx+=(Math.cos(q)*speed-o.vx)*k;o.vy+=(Math.sin(q)*speed-o.vy)*k}
-  o.vx*=Math.pow(.972,m);o.vy*=Math.pow(.972,m);
-  const s=Math.hypot(o.vx,o.vy);if(s>max){o.vx*=max/s;o.vy*=max/s}
-  o.x=cap(o.x+o.vx*m,-80,W+80);o.y=cap(o.y+o.vy*m,-80,H+80);
+  const total=worldDt(),steps=Math.max(1,Math.ceil(total/4)),h=total/steps;
+  for(let z=0;z<steps;z++){
+    if(t){const dx=t.x-o.x,dy=t.y-o.y,d=Math.hypot(dx,dy)||1;o.vx+=dx/d*acc*h;o.vy+=dy/d*acc*h}
+    const law=lawful(o),speed=Math.hypot(o.vx,o.vy);
+    if(law>.18&&speed>.001){const n=law>.68?12:8,u=TAU/n,a=Math.atan2(o.vy,o.vx),q=Math.round(a/u)*u,k=1-Math.pow(1-(.025+law*.07),h);o.vx+=(Math.cos(q)*speed-o.vx)*k;o.vy+=(Math.sin(q)*speed-o.vy)*k}
+    o.vx*=Math.pow(.972,h);o.vy*=Math.pow(.972,h);
+    const s=Math.hypot(o.vx,o.vy);if(s>max){o.vx*=max/s;o.vy*=max/s}
+    o.x=cap(o.x+o.vx*h,-80,W+80);o.y=cap(o.y+o.vy*h,-80,H+80);
+  }
 }
 function trail(o,n){o.trail.push({x:o.x,y:o.y});if(o.trail.length>n)o.trail.shift()}
 function giants(){
@@ -48,10 +51,10 @@ function eat(s){
     if(globalThis.LEAF_GENEALOGY&&eater.eaten===1)LEAF_GENEALOGY.remember('retrograde-hunger',{label:'a great star is eaten',color:'#ff00ff',parent:'stars-kindled'})}catch(_){}
 }
 function updateEater(){
-  if(eater.cool>0)eater.cool-=Math.max(1,Math.round(dt()));
+  const d=worldDt();if(eater.cool>0)eater.cool=Math.max(0,eater.cool-d);
   if(!eater.on){const g=giants();if(eater.cool<=0&&g.length>=3&&pressure()>2.8&&temple.iceCount>=8&&every(3000,317)&&Math.random()<.52)spawnEater(g[0]);return}
-  eater.age++;
-  if(eater.dying){eater.dying-=Math.max(1,Math.round(dt()));if(eater.dying<=0){try{decompose(eater.x,eater.y,['red','pink','blue'],1.25)}catch(_){}eater.on=false;eater.cool=span(30000,52000);eater.turn=0;eater.trail=[]}return}
+  eater.age+=d;
+  if(eater.dying){eater.dying-=d;if(eater.dying<=0){try{decompose(eater.x,eater.y,['red','pink','blue'],1.25)}catch(_){}eater.on=false;eater.cool=span(30000,52000);eater.turn=0;eater.trail=[]}return}
   const s=eaterTarget();if(s){move(eater,s,.017,1.05);if(Math.hypot(s.x-eater.x,s.y-eater.y)<18+num(s.sz,1)*4.8)eat(s)}else{const t=pTemple();move(eater,{x:t[0],y:t[1]},.006,.65)}
   trail(eater,34);
   while(eater.turn>=2.35){const n=iceAt(eater.x,eater.y,4);eater.turn-=n?2.35:.35;if(!n)break}
@@ -91,11 +94,11 @@ function gather(t){
   try{addElementImpact(t.kind==='red'?'heart':'power',o.x,o.y,.24);if(globalThis.LEAF_GENEALOGY&&scav.gathered===1)LEAF_GENEALOGY.remember('scavengers-hem',{label:'residue enters a hem',color:'#00ff00',parent:'love-wears-law'})}catch(_){}
 }
 function updateScav(){
-  if(scav.cool>0)scav.cool-=Math.max(1,Math.round(dt()));
+  const d=worldDt();if(scav.cool>0)scav.cool=Math.max(0,scav.cool-d);
   if(!scav.on){if(scav.cool<=0&&residue()>34&&every(2400,419)&&Math.random()<.64)spawnScav();return}
-  scav.age++;
-  if(scav.dying){scav.dying-=Math.max(1,Math.round(dt()));if(scav.dying<=0){for(const i of scav.garment)compost(i);try{decompose(scav.x,scav.y,['green','pink'],1.05)}catch(_){}scav.on=false;scav.cool=span(22000,40000);scav.garment=[];scav.target=null;scav.trail=[]}return}
-  if(!valid(scav.target)||tick%90===0)scav.target=chooseResidue();
+  scav.age+=d;
+  if(scav.dying){scav.dying-=d;if(scav.dying<=0){for(const i of scav.garment)compost(i);try{decompose(scav.x,scav.y,['green','pink'],1.05)}catch(_){}scav.on=false;scav.cool=span(22000,40000);scav.garment=[];scav.target=null;scav.trail=[]}return}
+  if(!valid(scav.target)||every(90,901))scav.target=chooseResidue();
   const t=scav.target;
   if(t){move(scav,t.object,.013,.78);if(Math.hypot(t.object.x-scav.x,t.object.y-scav.y)<12){gather(t);scav.target=null}}
   else{const a=tick*.003+Math.sin(tick*.0007);move(scav,{x:num(love.x,W/2)+Math.cos(a)*110,y:num(love.y,H/2)+Math.sin(a*1.3)*80},.004,.46)}
