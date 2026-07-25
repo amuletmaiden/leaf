@@ -8,15 +8,15 @@
    CHORUS OF PRECEDENT
    Official change name: Chorus of Precedent
 
+   TEMPORAL CONCORD
+   Official change name: Temporal Concord
+
    SILENT DOCTRINE
    Official change name: Silent Doctrine
 
    Temple is no longer only a place. Lawfulness is a local scalar that leaks
    from settled law, ice, and legislating goddesses. Things inside the field
    begin to snap, repeat, share phase, and move on a beat instead of pure drift.
-
-   The diagnostic square marks are hidden by default and have no public
-   command. The single word `law` wakes or sleeps the field itself, silently.
    ========================================================================== */
 (function () {
   'use strict';
@@ -28,8 +28,16 @@
   let legislators = [];
   let canvas = null;
   let ctx = null;
-  let frame = 0;
   let firstInfection = false;
+
+  const worldNow = () => {
+    try { return globalThis.LEAF_PACE ? LEAF_PACE.worldClock() : (typeof tick === 'number' ? tick : 0); }
+    catch (_) { return typeof tick === 'number' ? tick : 0; }
+  };
+  const worldDt = () => {
+    try { return globalThis.LEAF_PACE ? LEAF_PACE.step() : Math.max(0.1, pace); }
+    catch (_) { return 1; }
+  };
 
   try {
     const pref = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
@@ -103,7 +111,7 @@
 
   function infectObject(object, x, y, write, options) {
     if (!object || !Number.isFinite(x) || !Number.isFinite(y)) return 0;
-    const law = lawfulnessAt(x, y);
+    const law = lawfulnessAt(x, y), dt = Math.max(0.1, worldDt());
     object._leafLaw = law;
     if (law < 0.18) return law;
 
@@ -118,33 +126,29 @@
 
     const period = law > 0.72 ? 24 : law > 0.45 ? 40 : 64;
     if (object._leafLawPhase == null) object._leafLawPhase = Math.floor(Math.random() * period);
-    const clock = typeof tick === 'number' ? tick : frame;
+    const clock = worldNow();
     const phase = (clock + object._leafLawPhase) % period;
-    const open = phase <= Math.max(1, typeof pace === 'number' ? Math.sqrt(Math.max(1, pace)) : 1);
+    const open = phase <= Math.max(1, Math.sqrt(dt));
     object._leafLawBeat = phase / period;
 
-    /* Chorus of Precedent: visible bodies near the same law begin to share a
-       pulse. This changes no colour and draws no diagnostic sign; the initiate
-       reads law from many independent lights becoming one rhythm. */
     if (Number.isFinite(object.ph)) {
       const canonical = (clock % period) / period * Math.PI * 2;
-      object.ph += angleDifference(object.ph, canonical) * (0.004 + law * 0.016);
+      const base = 0.004 + law * 0.016;
+      object.ph += angleDifference(object.ph, canonical) * (1 - Math.pow(1 - base, dt));
     }
 
     if (!open) {
-      /* Between permitted beats, velocity is not erased. It is held. Stronger
-         law means a deeper collective hesitation; the release remains real
-         because momentum is preserved rather than replaced. */
       if (options && options.velocity && Number.isFinite(object.vx) && Number.isFinite(object.vy)) {
         const hold = 1 - (0.008 + law * 0.032);
-        object.vx *= hold;
-        object.vy *= hold;
+        object.vx *= Math.pow(hold, dt);
+        object.vy *= Math.pow(hold, dt);
       }
       return law;
     }
 
     const grid = law > 0.72 ? 8 : law > 0.45 ? 12 : 18;
-    const pull = 0.08 + law * 0.17;
+    const basePull = 0.08 + law * 0.17;
+    const pull = 1 - Math.pow(1 - basePull, dt);
     const nx = x + (Math.round(x / grid) * grid - x) * pull;
     const ny = y + (Math.round(y / grid) * grid - y) * pull;
     write(nx, ny, law);
@@ -155,8 +159,9 @@
         const steps = law > 0.65 ? 12 : 8;
         const a = Math.atan2(object.vy, object.vx);
         const qa = Math.round(a / (Math.PI * 2 / steps)) * (Math.PI * 2 / steps);
-        const blend = 0.10 + law * 0.16;
-        const release = 1 + law * 0.012;
+        const baseBlend = 0.10 + law * 0.16;
+        const blend = 1 - Math.pow(1 - baseBlend, dt);
+        const release = Math.pow(1 + law * 0.012, Math.min(dt, 4));
         object.vx = (object.vx + (Math.cos(qa) * speed - object.vx) * blend) * release;
         object.vy = (object.vy + (Math.sin(qa) * speed - object.vy) * blend) * release;
       }
@@ -164,26 +169,28 @@
     return law;
   }
 
+  function pruneLegislators() {
+    const now = worldNow();
+    legislators = legislators.filter(s => !s.expires || s.expires > now);
+  }
+
   function apply() {
     if (!enabled) return;
+    pruneLegislators();
     rebuildSources();
 
-    try {
-      for (const s of stars || []) infectObject(s, s.x, s.y, (x, y) => { s.x = x; s.y = y; }, { velocity: true });
-    } catch (_) {}
-    try {
-      for (const g of gyres || []) infectObject(g, g.x, g.y, (x, y) => { g.x = x; g.y = y; }, { velocity: true });
-    } catch (_) {}
-    try {
-      for (const h of daughters || []) infectObject(h, h.x, h.y, (x, y) => { h.x = x; h.y = y; }, { velocity: true });
-    } catch (_) {}
+    try { for (const s of stars || []) infectObject(s, s.x, s.y, (x, y) => { s.x = x; s.y = y; }, { velocity: true }); } catch (_) {}
+    try { for (const g of gyres || []) infectObject(g, g.x, g.y, (x, y) => { g.x = x; g.y = y; }, { velocity: true }); } catch (_) {}
+    try { for (const h of daughters || []) infectObject(h, h.x, h.y, (x, y) => { h.x = x; h.y = y; }, { velocity: true }); } catch (_) {}
     try {
       if (love) {
         const law = infectObject(love, love.x, love.y, (x, y, amount) => {
           love.x = x; love.y = y;
           if (Number.isFinite(love.gazeA)) {
             const step = Math.PI / (amount > 0.68 ? 12 : 8);
-            love.gazeA += (Math.round(love.gazeA / step) * step - love.gazeA) * (0.05 + amount * 0.08);
+            const base = 0.05 + amount * 0.08;
+            const blend = 1 - Math.pow(1 - base, Math.max(0.1, worldDt()));
+            love.gazeA += (Math.round(love.gazeA / step) * step - love.gazeA) * blend;
           }
         });
         love._leafLaw = law;
@@ -209,7 +216,6 @@
     ensureCanvas();
     ctx.clearRect(0, 0, innerWidth, innerHeight);
     if (!enabled) return;
-
     try { for (const s of stars || []) drawMark(s, s.x, s.y); } catch (_) {}
     try { for (const g of gyres || []) drawMark(g, g.x, g.y); } catch (_) {}
     try { for (const h of daughters || []) drawMark(h, h.x, h.y); } catch (_) {}
@@ -218,15 +224,8 @@
     try { if (aggressor && aggressor.on) drawMark(aggressor, aggressor.x, aggressor.y); } catch (_) {}
   }
 
-  function toggle() {
-    enabled = !enabled;
-    savePref();
-    return enabled;
-  }
-
-  function command() {
-    return toggle();
-  }
+  function toggle() { enabled = !enabled; savePref(); return enabled; }
+  function command() { return toggle(); }
 
   function addLegislator(source) {
     if (!source || !Number.isFinite(source.x) || !Number.isFinite(source.y)) return;
@@ -234,33 +233,25 @@
       x: source.x, y: source.y,
       strength: Math.max(0.2, Math.min(1.4, source.strength || 0.7)),
       kind: 'legislation',
-      expires: (typeof tick === 'number' ? tick : 0) + (source.life || 900)
+      expires: worldNow() + (source.life || 900)
     });
     if (legislators.length > 48) legislators.splice(0, legislators.length - 48);
   }
 
-  function pruneLegislators() {
-    const now = typeof tick === 'number' ? tick : 0;
-    legislators = legislators.filter(s => !s.expires || s.expires > now);
-  }
+  const ancestralFrame = frame;
+  frame = function () { ancestralFrame(); apply(); };
 
-  function loop() {
-    frame++;
-    if (frame % 5 === 0) {
-      pruneLegislators();
-      apply();
-    }
-    draw();
-    requestAnimationFrame(loop);
-  }
+  function visualLoop() { draw(); requestAnimationFrame(visualLoop); }
 
   globalThis.LEAF_LAW = {
     officialName: 'Law of Contagion',
     visualChangeName: 'Dormant Sigils',
     chorusName: 'Chorus of Precedent',
+    temporalName: 'Temporal Concord',
     doctrineName: 'Silent Doctrine',
     lawfulnessAt,
     addLegislator,
+    apply,
     command,
     toggle,
     isEnabled: () => enabled,
@@ -271,5 +262,5 @@
     }
   };
 
-  requestAnimationFrame(loop);
+  requestAnimationFrame(visualLoop);
 })();
