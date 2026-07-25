@@ -105,10 +105,14 @@
   add({
     word: 'pace', aliases: ['p', 'speed'], kata: kata(['pace', K.pink]),
     run(arg) {
-      if (!arg) return say('pace ' + pace);
-      const n = Number(arg);
-      if (!Number.isFinite(n) || n <= 0) return say('?');
-      pace = Math.max(0.1, Math.min(20000, n));
+      if (!arg) {
+        const value = globalThis.LEAF_PACE ? LEAF_PACE.get() : pace;
+        return say('pace ' + value);
+      }
+      const ok = globalThis.LEAF_PACE
+        ? LEAF_PACE.set(arg)
+        : Number.isFinite(Number(arg)) && Number(arg) > 0 && (pace = Math.max(0.1, Math.min(500, Number(arg))));
+      if (!ok) return say('?');
     }
   });
   add({ word: 'fall', aliases: ['f'], kata: kata(['fall', K.gold]), run() { launchFall(); } });
