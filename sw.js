@@ -2,13 +2,15 @@
    Integration Bridge injects named simulation systems into world pages and the
    Living Ledger enhancements into Council Ledger. */
 
-const CACHE = 'leaf-v19';
+const CACHE = 'leaf-v20';
 const SHELL = [
   './index.html',
   './council.html',
   './council-live.js',
   './council-ecology.js',
   './council-chronicle.js',
+  './council-atlas.js',
+  './leaf-systems.json',
   './leaf-hearth.js',
   './leaf-slots.js',
   './leaf-genealogy.js',
@@ -44,6 +46,7 @@ const COUNCIL_SYSTEM = `<!-- LEAF COUNCIL SYSTEM -->
 <script src="council-live.js"></script>
 <script src="council-ecology.js"></script>
 <script src="council-chronicle.js"></script>
+<script src="council-atlas.js"></script>
 <!-- /LEAF COUNCIL SYSTEM -->`;
 
 async function installNamedSystems(response) {
