@@ -1,16 +1,12 @@
 /* leaf service worker.
    Network-first so a new publish takes effect immediately when online;
    cache falls in behind so the site opens instantly on repeat visits and
-   still opens offline. HTML responses receive the tiny keyboard compatibility
-   hook below so the grave-accent key dismisses help before the page's own
-   terminal handler runs. */
+   still opens offline. HTML responses receive one compatibility patch:
+   backtick dismisses the help menu before toggling the terminal. */
 
-const CACHE = 'leaf-v2';
-const BACKTICK_HELP_FIX = `<script data-leaf-backtick-help-fix>
-addEventListener('keydown', function (event) {
-  if (event.code === 'Backquote' && typeof hideHelp === 'function') hideHelp();
-}, true);
-<\/script>`;
+const CACHE = 'leaf-v3';
+const OLD_BACKTICK_HANDLER = "  if(e.key==='`'){\n    e.preventDefault();\n    term.style.display=term.style.display==='none'?'block':'none';";
+const NEW_BACKTICK_HANDLER = "  if(e.key==='`'){\n    e.preventDefault();\n    hideHelp();\n    term.style.display=term.style.display==='none'?'block':'none';";
 
 async function patchHtml(response) {
   if (!response || !response.ok) return response;
@@ -18,9 +14,9 @@ async function patchHtml(response) {
   if (!type.includes('text/html')) return response;
 
   const text = await response.text();
-  const patched = text.includes('data-leaf-backtick-help-fix')
+  const patched = text.includes(NEW_BACKTICK_HANDLER)
     ? text
-    : text.replace('</body>', BACKTICK_HELP_FIX + '\n</body>');
+    : text.replace(OLD_BACKTICK_HANDLER, NEW_BACKTICK_HANDLER);
 
   const headers = new Headers(response.headers);
   headers.delete('content-length');
