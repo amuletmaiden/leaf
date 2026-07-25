@@ -2,6 +2,9 @@
    FOSSIL ORCHARD
    Official change name: Fossil Orchard
 
+   CHRONICLE LOOM
+   Official change name: Chronicle Loom
+
    The record layer remembers by sediment. Fossil Orchard gives that memory a
    readable shape: the first time a relation becomes true, the world grows one
    permanent branch. The orchard is local to this browser and never transmitted.
@@ -48,6 +51,7 @@
   let ctx = null;
   let open = false;
   let pulse = 0;
+  let lastScan = -Infinity;
 
   function load() {
     try {
@@ -69,7 +73,10 @@
   }
 
   function currentTick() {
-    try { return Number.isFinite(tick) ? tick : 0; } catch (_) { return 0; }
+    try {
+      if (globalThis.LEAF_PACE) return LEAF_PACE.worldClock();
+      return Number.isFinite(tick) ? tick : 0;
+    } catch (_) { return 0; }
   }
 
   function remember(id, detail) {
@@ -86,7 +93,19 @@
     };
     save();
     pulse = 1;
-    if (typeof notice === 'function') notice('a branch remembers · ' + state.events[id].label);
+    try {
+      if (globalThis.LEAF_CHRONICLE) {
+        const e = state.events[id];
+        LEAF_CHRONICLE.record('relation', e.label, e.color, {
+          key: 'fossil:' + id,
+          world: e.tick,
+          at: e.at,
+          seed: e.seed,
+          importance: 2,
+          data: { parent: e.parent, fossil: id }
+        });
+      }
+    } catch (_) {}
     if (open) draw();
     return true;
   }
@@ -220,6 +239,7 @@
 
   globalThis.LEAF_GENEALOGY = {
     officialName: 'Fossil Orchard',
+    chronicleName: 'Chronicle Loom',
     remember,
     toggle,
     close,
@@ -228,7 +248,12 @@
     events: () => ({ ...state.events })
   };
 
-  setInterval(scan, 1400);
+  const ancestralFrame = frame;
+  frame = function () {
+    ancestralFrame();
+    const now = currentTick();
+    if (now < lastScan || now - lastScan >= 60) { lastScan = now; scan(); }
+  };
   setInterval(function () {
     if (!open) return;
     pulse *= 0.84;
