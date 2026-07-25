@@ -2,16 +2,22 @@
    LAW OF CONTAGION
    Official change name: Law of Contagion
 
+   DORMANT SIGILS
+   Official change name: Dormant Sigils
+
    Temple is no longer only a place. Lawfulness is a local scalar that leaks
    from settled law, ice, and legislating goddesses. Things inside the field
    begin to snap, repeat, and move on a beat instead of by pure drift.
+
+   The diagnostic square marks are hidden by default and have no public
+   command. The single word `law` now wakes or sleeps the field itself.
    ========================================================================== */
 (function () {
   'use strict';
 
   const PREF_KEY = 'leaf_preferences_v1';
   let enabled = true;
-  let visible = true;
+  let visible = false;
   let sources = [];
   let legislators = [];
   let canvas = null;
@@ -22,14 +28,13 @@
   try {
     const pref = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
     if (typeof pref.lawEnabled === 'boolean') enabled = pref.lawEnabled;
-    if (typeof pref.lawVisible === 'boolean') visible = pref.lawVisible;
   } catch (_) {}
 
   function savePref() {
     try {
       const pref = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
       pref.lawEnabled = enabled;
-      pref.lawVisible = visible;
+      delete pref.lawVisible;
       localStorage.setItem(PREF_KEY, JSON.stringify(pref));
     } catch (_) {}
   }
@@ -164,9 +169,10 @@
   }
 
   function draw() {
+    if (!visible) return;
     ensureCanvas();
     ctx.clearRect(0, 0, innerWidth, innerHeight);
-    if (!enabled || !visible) return;
+    if (!enabled) return;
 
     try { for (const s of stars || []) drawMark(s, s.x, s.y); } catch (_) {}
     try { for (const g of gyres || []) drawMark(g, g.x, g.y); } catch (_) {}
@@ -176,15 +182,15 @@
     try { if (aggressor && aggressor.on) drawMark(aggressor, aggressor.x, aggressor.y); } catch (_) {}
   }
 
-  function command(argument) {
-    const word = (argument || '').trim().toLowerCase();
-    if (word === 'off') enabled = false;
-    else if (word === 'on') enabled = true;
-    else if (word === 'hide') visible = false;
-    else if (word === 'show') visible = true;
-    else visible = !visible;
+  function toggle() {
+    enabled = !enabled;
     savePref();
-    if (typeof notice === 'function') notice('law ' + (enabled ? (visible ? 'visible' : 'hidden') : 'sleeping'));
+    if (typeof notice === 'function') notice(enabled ? 'law wakes' : 'law sleeps');
+    return enabled;
+  }
+
+  function command() {
+    return toggle();
   }
 
   function addLegislator(source) {
@@ -215,13 +221,18 @@
 
   globalThis.LEAF_LAW = {
     officialName: 'Law of Contagion',
+    visualChangeName: 'Dormant Sigils',
     lawfulnessAt,
     addLegislator,
     command,
+    toggle,
     isEnabled: () => enabled,
-    isVisible: () => visible
+    isVisible: () => visible,
+    _setDiagnosticVisible(value) {
+      visible = !!value;
+      if (!visible && canvas && ctx) ctx.clearRect(0, 0, innerWidth, innerHeight);
+    }
   };
 
-  ensureCanvas();
   requestAnimationFrame(loop);
 })();
