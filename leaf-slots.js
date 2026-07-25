@@ -2,8 +2,12 @@
    POCKET WORLDS
    Official change name: Pocket Worlds
 
+   SILENT DOCTRINE
+   Official change name: Silent Doctrine
+
    Numbered local slots. `save 1` keeps the present world in slot 1 inside this
    browser; `load 1` opens it. Nothing is uploaded and no file picker appears.
+   Successful rites are silent. Only failure speaks.
    ========================================================================== */
 (function () {
   'use strict';
@@ -30,7 +34,6 @@
     }
     try {
       localStorage.setItem(PREFIX + slot, snapshot());
-      say('saved ' + slot);
       return true;
     } catch (_) {
       say('save failed');
@@ -51,7 +54,6 @@
         return false;
       }
       loadFromText(world);
-      say('loaded ' + slot);
       return true;
     } catch (_) {
       say('load failed');
@@ -68,6 +70,7 @@
 
   globalThis.LEAF_SLOTS = {
     officialName: 'Pocket Worlds',
+    doctrineName: 'Silent Doctrine',
     save,
     load,
     has
