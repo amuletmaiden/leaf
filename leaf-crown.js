@@ -5,10 +5,14 @@
    SILENT DOCTRINE
    Official change name: Silent Doctrine
 
+   VEILED ASCENSION
+   Official change name: Veiled Ascension
+
    One registry owns command words, aliases, syllable-coloured help, and
    execution. The older terminal listener remains in the ancestral page but is
    intercepted before it can act, so there is one active source of truth.
-   Successful ritual commands do not narrate themselves.
+   Successful ritual commands do not narrate themselves. Internal stages have
+   no command, help entry, or public readout.
    ========================================================================== */
 (function () {
   'use strict';
@@ -137,10 +141,6 @@
     word: 'law', kata: kata(['law', K.blue]),
     run() { if (globalThis.LEAF_LAW) LEAF_LAW.toggle(); }
   });
-  add({
-    word: 'mind', kata: kata(['mind', K.violet]),
-    run() { if (globalThis.LEAF_MIND) LEAF_MIND.describe(); }
-  });
   add({ word: 'help', aliases: ['h', '?'], visible: false, kata: '', run() { renderHelp(); } });
 
   function execute(raw) {
@@ -203,6 +203,7 @@
   globalThis.LEAF_COMMANDS = {
     officialName: 'Lexicon Crown',
     doctrineName: 'Silent Doctrine',
+    veilName: 'Veiled Ascension',
     registry,
     execute,
     showHelp: renderHelp,
