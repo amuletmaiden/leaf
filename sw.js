@@ -3,7 +3,14 @@
    until the canonical pages contain their script tags directly. It does not
    rewrite Leaf's source logic. */
 
-const CACHE = 'leaf-v8';
+const CACHE = 'leaf-v9';
+const SHELL = [
+  './leaf-hearth.js',
+  './leaf-genealogy.js',
+  './leaf-law.js',
+  './leaf-mind.js',
+  './leaf-crown.js'
+];
 const NAMED_SYSTEMS = `<!-- LEAF NAMED SYSTEMS -->
 <script src="leaf-hearth.js"></script>
 <script src="leaf-genealogy.js"></script>
@@ -32,7 +39,13 @@ async function installNamedSystems(response) {
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(self.skipWaiting());
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    await Promise.all(SHELL.map(async (url) => {
+      try { await cache.add(url); } catch (_) {}
+    }));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
@@ -40,6 +53,17 @@ self.addEventListener('activate', (event) => {
     const names = await caches.keys();
     await Promise.all(names.filter((name) => name !== CACHE).map((name) => caches.delete(name)));
     await self.clients.claim();
+
+    /* A first-time visitor loaded the ancestral page before this worker gained
+       control. Reload that page exactly once, at activation, so the named
+       systems appear without asking the visitor to understand service workers. */
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    await Promise.all(windows.map(async (client) => {
+      try {
+        const url = new URL(client.url);
+        if (url.origin === self.location.origin) await client.navigate(client.url);
+      } catch (_) {}
+    }));
   })());
 });
 
