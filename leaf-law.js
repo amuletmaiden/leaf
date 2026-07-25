@@ -5,12 +5,15 @@
    DORMANT SIGILS
    Official change name: Dormant Sigils
 
+   SILENT DOCTRINE
+   Official change name: Silent Doctrine
+
    Temple is no longer only a place. Lawfulness is a local scalar that leaks
    from settled law, ice, and legislating goddesses. Things inside the field
    begin to snap, repeat, and move on a beat instead of by pure drift.
 
    The diagnostic square marks are hidden by default and have no public
-   command. The single word `law` now wakes or sleeps the field itself.
+   command. The single word `law` wakes or sleeps the field itself, silently.
    ========================================================================== */
 (function () {
   'use strict';
@@ -185,7 +188,6 @@
   function toggle() {
     enabled = !enabled;
     savePref();
-    if (typeof notice === 'function') notice(enabled ? 'law wakes' : 'law sleeps');
     return enabled;
   }
 
@@ -222,6 +224,7 @@
   globalThis.LEAF_LAW = {
     officialName: 'Law of Contagion',
     visualChangeName: 'Dormant Sigils',
+    doctrineName: 'Silent Doctrine',
     lawfulnessAt,
     addLegislator,
     command,
