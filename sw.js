@@ -1,36 +1,68 @@
 /* leaf service worker.
    Network-first so a new publish takes effect immediately when online;
    cache falls in behind so the site opens instantly on repeat visits and
-   still opens offline. Cache is intentionally per-URL and unversioned:
-   the network wins every time it can, and stale entries get replaced by
-   whatever the network returned. */
+   still opens offline. HTML responses receive the tiny keyboard compatibility
+   hook below so the grave-accent key dismisses help before the page's own
+   terminal handler runs. */
 
-const CACHE = 'leaf';
+const CACHE = 'leaf-v2';
+const BACKTICK_HELP_FIX = `<script data-leaf-backtick-help-fix>
+addEventListener('keydown', function (event) {
+  if (event.key === \"`\" && typeof hideHelp === 'function') hideHelp();
+}, true);
+<\/script>`;
 
-self.addEventListener('install', (e) => { self.skipWaiting(); });
-self.addEventListener('activate', (e) => { e.waitUntil(self.clients.claim()); });
+async function patchHtml(response) {
+  if (!response || !response.ok) return response;
+  const type = response.headers.get('content-type') || '';
+  if (!type.includes('text/html')) return response;
 
-self.addEventListener('fetch', (e) => {
-  const req = e.request;
-  if (req.method !== 'GET') return;
-  const url = new URL(req.url);
+  const text = await response.text();
+  const patched = text.includes('data-leaf-backtick-help-fix')
+    ? text
+    : text.replace('</body>', BACKTICK_HELP_FIX + '\n</body>');
+
+  const headers = new Headers(response.headers);
+  headers.delete('content-length');
+  return new Response(patched, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+
+self.addEventListener('install', (event) => { event.waitUntil(self.skipWaiting()); });
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const names = await caches.keys();
+    await Promise.all(names.filter((name) => name !== CACHE).map((name) => caches.delete(name)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  e.respondWith((async () => {
+
+  event.respondWith((async () => {
     try {
-      const fresh = await fetch(req);
+      let fresh = await fetch(request);
+      fresh = await patchHtml(fresh);
       if (fresh && fresh.ok && fresh.type !== 'opaque') {
         const clone = fresh.clone();
-        caches.open(CACHE).then((c) => c.put(req, clone)).catch(() => {});
+        caches.open(CACHE).then((cache) => cache.put(request, clone)).catch(() => {});
       }
       return fresh;
-    } catch (_) {
-      const hit = await caches.match(req);
-      if (hit) return hit;
-      if (req.mode === 'navigate') {
+    } catch (error) {
+      const hit = await caches.match(request);
+      if (hit) return patchHtml(hit);
+      if (request.mode === 'navigate') {
         const shell = await caches.match('./');
-        if (shell) return shell;
+        if (shell) return patchHtml(shell);
       }
-      throw _;
+      throw error;
     }
   })());
 });
