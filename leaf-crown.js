@@ -1,4 +1,4 @@
-/* ==========================================================================
+/* ========================================================================== 
    LEXICON CROWN
    Official change name: Lexicon Crown
 
@@ -19,7 +19,7 @@
 
   const K = {
     red: '#ff0000', green: '#00ff00', pink: '#ff00ff', blue: '#00c8ff',
-    gold: '#ffd700', violet: '#8a5cff', grey: '#7a8496', white: '#e8f4ff'
+    gold: '#ffff00', violet: '#8a5cff', grey: '#7a8496', white: '#e8f4ff'
   };
 
   const registry = [];
@@ -55,7 +55,7 @@
   function openTerminal() {
     term.style.display = 'block';
     term.value = '';
-    term.placeholder = (typeof seedName === 'string' && seedName) ? ('· ' + seedName + ' ·  help') : 'help';
+    term.placeholder = (typeof seedName === 'string' && seedName) ? ('· ' + seedName + ' ·  h') : 'h';
     term.focus();
   }
 
@@ -94,9 +94,8 @@
     word: 'save', aliases: ['sv'], kata: kata(['save', K.blue]),
     run(arg) { if (globalThis.LEAF_SLOTS) LEAF_SLOTS.save(arg); }
   });
-  add({ word: 'keep', kata: kata(['keep', K.blue]), run() { keepWorld(); } });
   add({
-    word: 'load', aliases: ['ld'], kata: kata(['load', K.blue]),
+    word: 'load', aliases: ['ld'], kata: kata(['load', K.green]),
     run(arg) { if (globalThis.LEAF_SLOTS) LEAF_SLOTS.load(arg); }
   });
   add({
@@ -117,7 +116,7 @@
   });
   add({
     word: 'zettaitsune', aliases: ['zts', 'bride'],
-    kata: kata(['zet', K.green], ['tai', K.blue], ['tsu', K.green], ['ne', K.blue]),
+    kata: kata(['zet', K.green], ['tai', K.blue], ['tsune', K.green]),
     run() { summon('zettaitsune'); }
   });
   add({
@@ -141,7 +140,7 @@
     word: 'law', kata: kata(['law', K.blue]),
     run() { if (globalThis.LEAF_LAW) LEAF_LAW.toggle(); }
   });
-  add({ word: 'help', aliases: ['h', '?'], visible: false, kata: '', run() { renderHelp(); } });
+  add({ word: 'h', aliases: ['help', '?'], visible: false, kata: '', run() { renderHelp(); } });
 
   function execute(raw) {
     const text = (raw || '').trim();
