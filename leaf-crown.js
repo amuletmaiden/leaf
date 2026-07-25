@@ -2,7 +2,7 @@
    LEXICON CROWN
    Official change name: Lexicon Crown
 
-   One registry now owns command words, aliases, syllable-coloured help, and
+   One registry owns command words, aliases, syllable-coloured help, and
    execution. The older terminal listener remains in the ancestral page but is
    intercepted before it can act, so there is one active source of truth.
    ========================================================================== */
@@ -38,7 +38,6 @@
     try { hideHelp(); } catch (_) {}
     closeTerminal();
     if (globalThis.LEAF_GENEALOGY) LEAF_GENEALOGY.close();
-    if (globalThis.LEAF_HEARTH) LEAF_HEARTH.hide();
   }
 
   function terminalOpen() {
@@ -83,9 +82,15 @@
     word: 'reset', aliases: ['rs'], kata: kata(['re', K.pink], ['set', K.blue]),
     run() { resetWithRandomSeed(); }
   });
-  add({ word: 'save', aliases: ['sv'], kata: kata(['save', K.blue]), run() { exportWorld(); } });
+  add({
+    word: 'save', aliases: ['sv'], kata: kata(['save', K.blue]),
+    run(arg) { if (globalThis.LEAF_SLOTS) LEAF_SLOTS.save(arg); }
+  });
   add({ word: 'keep', kata: kata(['keep', K.blue]), run() { keepWorld(); } });
-  add({ word: 'load', aliases: ['ld'], kata: kata(['load', K.blue]), run() { chooseWorldImport(); } });
+  add({
+    word: 'load', aliases: ['ld'], kata: kata(['load', K.blue]),
+    run(arg) { if (globalThis.LEAF_SLOTS) LEAF_SLOTS.load(arg); }
+  });
   add({
     word: 'pace', aliases: ['p', 'speed'], kata: kata(['pace', K.green]),
     run(arg) {
@@ -127,21 +132,11 @@
   });
   add({
     word: 'law', kata: kata(['law', K.blue]),
-    run(arg) { if (globalThis.LEAF_LAW) LEAF_LAW.command(arg); }
+    run() { if (globalThis.LEAF_LAW) LEAF_LAW.toggle(); }
   });
   add({
     word: 'mind', kata: kata(['mind', K.violet]),
     run() { if (globalThis.LEAF_MIND) LEAF_MIND.describe(); }
-  });
-  add({
-    word: 'privacy', aliases: ['hearth'],
-    kata: kata(['pri', K.blue], ['va', K.green], ['cy', K.grey]),
-    run() { if (globalThis.LEAF_HEARTH) LEAF_HEARTH.show(); }
-  });
-  add({
-    word: 'forget', visible: false,
-    kata: kata(['for', K.pink], ['get', K.blue]),
-    run(arg) { if (globalThis.LEAF_HEARTH) LEAF_HEARTH.forget(arg); }
   });
   add({ word: 'help', aliases: ['h', '?'], visible: false, kata: '', run() { renderHelp(); } });
 
@@ -164,7 +159,6 @@
     return command.run(arg, text);
   }
 
-  /* Make any direct call from the ancestral page use the Crown's rendering. */
   try { showHelp = renderHelp; } catch (_) { globalThis.showHelp = renderHelp; }
 
   addEventListener('keydown', function (event) {
@@ -174,8 +168,7 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       const anyNotice = helpOpen() ||
-        (globalThis.LEAF_GENEALOGY && LEAF_GENEALOGY.isOpen()) ||
-        (globalThis.LEAF_HEARTH && LEAF_HEARTH.isOpen());
+        (globalThis.LEAF_GENEALOGY && LEAF_GENEALOGY.isOpen());
       if (anyNotice) closeOverlays();
       else toggleTerminal();
       return;
