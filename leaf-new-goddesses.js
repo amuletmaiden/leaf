@@ -42,9 +42,9 @@ function spawnEater(s){
   const left=s.x>W/2;eater.x=left?-55:W+55;eater.y=cap(s.y+rand(-140,140),40,H-40);eater.vx=left?.15:-.15;eater.vy=0;
 }
 function eaterTarget(){
-  const bright=brightStars();if(bright.length)return bright[0];
-  let b=null,v=-1;try{for(const s of stars){const q=num(s.sz)*1.4+num(s.mass,1)*.35;if(q>v){v=q;b=s}}}catch(_){}
-  return b;
+  /* Winnowing is selection, not a total eclipse. Once no consequential light
+     remains, Hunger has nothing left to take. */
+  const bright=brightStars();return bright.length?bright[0]:null;
 }
 function iceAt(x,y,n){
   try{const t=pTemple();let made=0;for(let k=0;k<n*5&&made<n;k++){const a=rand(0,TAU),r=rand(10,42),nx=x-t[0]+Math.cos(a)*r,ny=y-t[1]+Math.sin(a)*r;if(seatFree(nx,ny,105)){addLawPoint(nx,ny,'ice');emitGlints(x,y,t[0],t[1],1);made++}}return made}catch(_){return 0}
@@ -70,7 +70,7 @@ function updateEater(){
   const s=eaterTarget();if(s){move(eater,s,.021,1.22);if(Math.hypot(s.x-eater.x,s.y-eater.y)<20+num(s.sz,1)*5.2)eat(s)}else{const t=pTemple();move(eater,{x:t[0],y:t[1]},.006,.65)}
   trail(eater,34);
   while(eater.turn>=2.35){const n=iceAt(eater.x,eater.y,4);eater.turn-=n?2.35:.35;if(!n)break}
-  if(eater.age>eater.life||(eater.eaten&&!crowdedSky()&&pressure()<.72&&eater.turn<.8))eater.dying=span(420,620);
+  if(eater.age>eater.life||(eater.eaten&&pressure()<.72&&eater.turn<.8))eater.dying=span(420,620);
 }
 function drawEater(){
   if(!eater.on)return;const a=eater.dying?cap(eater.dying/520,0,1):Math.min(1,eater.age/160);

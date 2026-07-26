@@ -156,7 +156,7 @@ Revert phrase: `revert Zettaitsune Trine`
 
 **Files:** `leaf-new-goddesses.js`, `leaf-systems.json`
 
-Lets Retrograde Hunger wake not only for a concentration of giant stars, but also for a crowded bright sky. It still selects the largest available light and withdraws after the field is thinned, so sparse ordinary starlight is left alone.
+Lets Retrograde Hunger wake not only for a concentration of giant stars, but also for a crowded bright sky. It selects only consequential bright lights and withdraws after the field is thinned, so sparse ordinary starlight is left alone.
 
 Revert phrase: `revert Predator's Winnowing`
 
