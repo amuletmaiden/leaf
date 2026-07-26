@@ -1103,7 +1103,10 @@ function updateGyres(px,py){
       const lx=Math.cos(o.a)*o.r,ly=Math.sin(o.a)*o.r;
       const nx=G.x+lx, ny=G.y+ly;
       if(o.fresh)o.trail.length=0;
-      if(!o.fresh&&!o.skipSilk){
+      /* Root-Silk Restraint: Quiet Silk records a local turning. Power itself
+         travels through the world, so its moving orbit must not be flattened
+         into a bright magenta scar across the persistent sky. */
+      if(!G.root&&!o.fresh&&!o.skipSilk){
         const t=Math.max(0,(120*G.scale-o.r)/(113*G.scale));
         /* Quiet Silk is the world-space circle left behind. Its original sparse
            gate, rim suppression, colors and narrow width remain intact. */

@@ -176,6 +176,14 @@ Sets a dark, dense HEART centre inside Aggression. Her green and magenta bodies 
 
 Revert phrase: `revert Dark Core of Aggression`
 
+## Root-Silk Restraint
+
+**Files:** `index.html`, `leaf-systems.json`
+
+Prevents the root gyre from drawing Quiet Silk into the persistent layer while it follows Power's path. Mortal gyres still leave local, fading silk; the existing root scar simply fades once the world runs on this revision.
+
+Revert phrase: `revert Root-Silk Restraint`
+
 ## Round Horizon
 
 **Commit:** `edde7d24009b21fb99ae1fabc82e12e889b57249`
