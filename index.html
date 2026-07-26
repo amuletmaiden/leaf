@@ -268,10 +268,12 @@ const TUNE = {
                                 the effective rate is much lower than this and
                                 rises on its own as the field spreads. NO CAP,
                                 NO CLOCK -- see the condensation site. */
-  STAR_SZ_MIN      : 0.40,   /* the smallest light that still counts as one */
-  STAR_SZ_MAX      : 3.40,   /* the rare giant. see makeStar for the spectrum */
-  STAR_SZ_ALPHA    : 1.45,   /* power-law index. HIGHER = fewer giants.
-                                1.35-1.6 keeps giants at roughly 1 in 40. */
+  STAR_SZ_MIN      : 0.24,   /* a distant light should read as a point */
+  STAR_SZ_MAX      : 1.85,   /* no recurring planet-sized yellow blobs */
+  STAR_SZ_ALPHA    : 2.15,   /* a steep spectrum: almost every star is small */
+  STRUCTURE_INTERVAL: 900,   /* cosmic grammars wake regularly once there is
+                                settled light, not in a single early burst */
+  STRUCTURE_MAX    : 28,     /* enough history to read as a sky, still airy */
   /* the fall ------------------------------------------------------------ */
   FALL_INTERVAL    : 2000,   /* ticks between tithes, when the sky holds any */
   FALL_MIN_STARS   : 10,
@@ -1219,6 +1221,11 @@ function drawGyres(){
 
 /* ============ contacts, gold, stars ============ */
 const golds=[], ferments=[], stars=[], fallers=[], starBursts=[];
+/* A star does not remain an isolated point forever. These are slow, seeded
+   records of its relations: cool filaments, shells, braids and dendrites that
+   keep unfolding long after their first light has appeared. */
+const cosmicStructures=[];
+let cosmicSerial=0;
 const embers=[]; /* TEMPLE→HEART: fire kept in the law */
 const elementFragments=[],elementFlashes=[]; /* a star's answer from each element */
 function addElementImpact(kind,x,y,power){
@@ -1661,9 +1668,11 @@ function contacts(hx,hy,tx,ty){
         stars.push(makeStar(m.x,m.y,m.vx*0.5,m.vy*0.35));
       golds.splice(i,1); continue;
     }
+    /* Gold is a brief conversion, not a second population of oversized suns.
+       Keep it warm and legible, but let it read as dust beside the cool sky. */
     const a=1-m.age/m.life;
-    X.fillStyle='rgba(255,242,120,'+(0.85*a)+')';
-    X.beginPath(); X.arc(m.x,m.y,2.2*a+0.5,0,TAU); X.fill();
+    X.fillStyle='rgba(255,190,92,'+(0.48*a)+')';
+    X.beginPath(); X.arc(m.x,m.y,0.78*a+0.24,0,TAU); X.fill();
   }
   for(let i=ferments.length-1;i>=0;i--){
     const f=ferments[i]; f.age++;
@@ -2658,7 +2667,7 @@ function launchFall(){
   fallers.push({sx:st.x,sy:st.y,tx:fx,ty:fy,t:0,energy:1,
     x:st.x,y:st.y,px:st.x,py:st.y,d0:d0,age:0,
     vx:(st.vx||0)*2.2+Math.cos(side)*sp,
-    vy:(st.vy||0)*2.2+Math.sin(side)*sp,sz:st.sz||1,mass:st.mass||1});
+    vy:(st.vy||0)*2.2+Math.sin(side)*sp,sz:st.sz||1,mass:st.mass||1,tone:st.tone||0});
 }
 function updateStarfall(hx,hy,tx,ty){
   if(every(TUNE.FALL_INTERVAL,601) && stars.length>TUNE.FALL_MIN_STARS)launchFall();
@@ -2732,12 +2741,14 @@ function updateStarfall(hx,hy,tx,ty){
       }
     }
     starTouchesWorld(f,x,y,hx,hy,tx,ty);
-    /* golden descent */
+    /* A fall is ionized stellar light: cool, thin and directional rather than
+       another large yellow lamp. */
+    const fallRgb=starToneRGB(f.tone);
     let g=X.createRadialGradient(x,y,0,x,y,14);
-    g.addColorStop(0,'rgba(255,245,140,0.9)');
-    g.addColorStop(1,'rgba(255,200,0,0)');
-    X.fillStyle=g; X.beginPath(); X.arc(x,y,14,0,TAU); X.fill();
-    X.strokeStyle='rgba(255,240,150,0.35)'; X.lineWidth=1;
+    g.addColorStop(0,'rgba('+fallRgb+',0.68)');
+    g.addColorStop(1,'rgba('+fallRgb+',0)');
+    X.fillStyle=g; X.beginPath(); X.arc(x,y,8,0,TAU); X.fill();
+    X.strokeStyle='rgba('+fallRgb+',0.28)'; X.lineWidth=0.72;
     X.beginPath(); X.moveTo(f.px,f.py); X.lineTo(x,y); X.stroke();
     f.px=x; f.py=y;
     /* it lands where it ARRIVES, which is not always where it was aimed: a
@@ -2767,6 +2778,8 @@ function starSize(){
   const s=lo/Math.pow(1-u*(1-Math.pow(lo/hi,k)),1/k);
   return Math.min(hi,s);
 }
+const STAR_TONES=['148,229,255','186,210,255','177,169,255','208,164,255','118,255,224','223,244,255'];
+function starToneRGB(tone){return STAR_TONES[(tone||0)%STAR_TONES.length];}
 function makeStar(x,y,vx,vy){
   const a=rand(0,TAU),d=rand(0.05,0.28);
   const sz=starSize();
@@ -2774,7 +2787,90 @@ function makeStar(x,y,vx,vy){
      only in width */
   return {x,y,vx:((vx||0)+Math.cos(a)*d)/(0.7+sz*0.4),
           vy:((vy||0)+Math.sin(a)*d)/(0.7+sz*0.4),
-    ph:rand(0,TAU),sp:rand(0.02,0.06)/(0.6+sz*0.6),sz:sz,mass:0.5+sz*0.9};
+    ph:rand(0,TAU),sp:rand(0.02,0.06)/(0.6+sz*0.6),sz:sz,mass:0.5+sz*0.9,
+    tone:Math.floor(rand(0,STAR_TONES.length))};
+}
+/* ============ COSMIC GRAMMAR ============
+   A seed is not just a starting random number. It selects an ordered grammar
+   for every structure that will ever be born. Seven families, six arm counts,
+   five depths, four fork rules, twelve palette/phase choices, and a different
+   continuation choice at every fork give more than a million distinct local
+   forms before position is considered. The ordinal makes that pool keep
+   branching indefinitely instead of repeating one seed's favourite picture. */
+const COSMIC_FAMILIES=['filament','dendrite','lattice','corona','braid','shell','veil'];
+function cosmicHash(){return hash32([seedName||'the-four-motions','cosmos'].concat([].slice.call(arguments)).join('|'));}
+function cosmicUnit(){return cosmicHash.apply(null,arguments)/4294967296;}
+function makeCosmicStructure(x,y){
+  const id=cosmicSerial++, h=cosmicHash('form',id);
+  return {id,x,y,age:0,
+    family:h%COSMIC_FAMILIES.length,
+    arms:2+((h>>>3)%6), depth:3+((h>>>7)%5), fork:1+((h>>>12)%4),
+    tone:(h>>>16)%STAR_TONES.length, phase:cosmicUnit('phase',id)*TAU,
+    scale:0.66+cosmicUnit('scale',id)*0.72, drift:0.16+cosmicUnit('drift',id)*0.46};
+}
+function seedCosmicStructure(x,y){
+  if(cosmicStructures.length>=TUNE.STRUCTURE_MAX)return;
+  cosmicStructures.push(makeCosmicStructure(x,y));
+}
+function updateCosmicStructures(){
+  for(const s of cosmicStructures)s.age+=mo();
+  /* A settled star is enough to begin a grammar. Later births choose their
+     anchors by seed and ordinal, so the same seed always unfolds the same
+     succession even though the result is far richer than a single preset. */
+  if(stars.length && cosmicStructures.length<TUNE.STRUCTURE_MAX && every(TUNE.STRUCTURE_INTERVAL,733)){
+    const at=stars[Math.floor(cosmicUnit('anchor',cosmicSerial)*stars.length)];
+    seedCosmicStructure(at.x,at.y);
+  }
+}
+function drawCosmicStructures(){
+  if(!cosmicStructures.length)return;
+  X.save();X.globalCompositeOperation='lighter';X.lineCap='round';
+  for(const s of cosmicStructures){
+    const grow=Math.min(1,s.age/(420+s.depth*260));
+    if(grow<=0.02)continue;
+    const rgb=starToneRGB(s.tone), family=s.family;
+    const baseR=(22+family*5)*s.scale, visible=Math.max(1,Math.ceil(s.depth*grow));
+    const alpha=(0.045+0.085*grow)*(0.75+0.25*Math.sin(tick*0.012+s.phase));
+    let tips=[];
+    for(let arm=0;arm<s.arms;arm++){
+      const a=s.phase+arm*TAU/s.arms+(cosmicUnit(s.id,'arm',arm)-0.5)*0.38;
+      tips.push({x:s.x,y:s.y,a});
+    }
+    for(let level=0;level<visible;level++){
+      const next=[], completion=Math.min(1,Math.max(0,s.depth*grow-level));
+      for(let ti=0;ti<tips.length;ti++){
+        const tip=tips[ti], u=cosmicUnit(s.id,'branch',level,ti);
+        const ripple=Math.sin(tick*(0.003+s.drift*0.002)+s.phase+level*0.9);
+        const twist=(u-0.5)*(family===2?0.42:family===4?1.15:0.78)+ripple*(family===4?0.16:0.045);
+        const a=tip.a+twist;
+        const len=(baseR+level*(11+family*2))*(0.76+u*0.45)*completion;
+        const q={x:tip.x+Math.cos(a)*len,y:tip.y+Math.sin(a)*len,a};
+        X.strokeStyle='rgba('+rgb+','+alpha+')';X.lineWidth=0.38+0.42*(1-level/(s.depth+1));
+        X.beginPath();X.moveTo(tip.x,tip.y);X.lineTo(q.x,q.y);X.stroke();
+        if((level+ti)%3===0){
+          X.fillStyle='rgba('+rgb+','+(alpha*2.2)+')';X.beginPath();X.arc(q.x,q.y,0.52+0.24*grow,0,TAU);X.fill();
+        }
+        const split=level<s.depth-1 && ((level+s.fork+family)%2===0 || u>0.58);
+        if(split){
+          const fan=family===3?0.28:family===5?0.64:0.43;
+          next.push({x:q.x,y:q.y,a:a-fan*(0.6+u*0.4)});
+          next.push({x:q.x,y:q.y,a:a+fan*(0.6+u*0.4)});
+        }else next.push(q);
+      }
+      /* Veils and lattices remember lateral relation as well as ancestry. */
+      if((family===2||family===6) && next.length>2){
+        X.strokeStyle='rgba('+rgb+','+(alpha*0.5)+')';X.lineWidth=0.32;X.beginPath();
+        for(let i=1;i<next.length;i+=2){X.moveTo(next[i-1].x,next[i-1].y);X.lineTo(next[i].x,next[i].y);}X.stroke();
+      }
+      tips=next;
+    }
+    if(family===3||family===5){
+      const r=baseR*(1.35+grow*1.4), wobble=1+0.09*Math.sin(tick*0.008+s.phase);
+      X.strokeStyle='rgba('+rgb+','+(alpha*0.72)+')';X.lineWidth=0.42;X.beginPath();
+      X.ellipse(s.x,s.y,r*wobble,r*(0.46+0.08*Math.sin(s.phase)),s.phase,0,TAU);X.stroke();
+    }
+  }
+  X.restore();
 }
 /* There is no top in space, and no star is summoned anywhere. Each drifts on
    the momentum it was born with and is bent only by the four masses: heart,
@@ -2785,6 +2881,7 @@ function updateStars(hx,hy,tx,ty){
   for(const G of gyres)wells.push([G.x,G.y,30*G.scale]);
   for(const st of stars){
     if(st.vx===undefined){st.vx=rand(-0.12,0.12);st.vy=rand(-0.12,0.12);st.mass=rand(0.7,1.3);}
+    if(st.tone===undefined)st.tone=hash32('star-tone|'+Math.round(st.x)+'|'+Math.round(st.y))%STAR_TONES.length;
     for(const w of wells){
       const dx=w[0]-st.x, dy=w[1]-st.y, d2=dx*dx+dy*dy;
       if(d2>1e6||d2<4)continue;
@@ -2807,17 +2904,18 @@ function drawStars(){
     const tw=0.45+0.55*Math.sin(tick*st.sp+st.ph);
     /* a big star twinkles less: atmosphere scintillates a point, not a disc */
     const st_tw=1-(1-tw)*Math.min(1,1.15/(0.5+st.sz));
-    X.fillStyle='rgba(255,238,140,'+(0.85*st_tw)+')';
-    X.beginPath(); X.arc(st.x,st.y,st.sz*st_tw+0.2,0,TAU); X.fill();
-    if(st.sz>0.85&&tw>0.55){
-      /* a bright star swells rather than sprouting spikes: the cross is a
-         camera artifact, not something a light does. */
+    const rgb=starToneRGB(st.tone);
+    X.fillStyle='rgba('+rgb+','+(0.72*st_tw)+')';
+    X.beginPath(); X.arc(st.x,st.y,st.sz*st_tw+0.12,0,TAU); X.fill();
+    if(st.sz>1.05&&tw>0.68){
+      /* The rare brighter point gets a restrained cool halo, not a repeated
+         sun-shaped blob. */
       X.save(); X.globalCompositeOperation='lighter';
-      const hr=st.sz*3.1+1.6;
+      const hr=st.sz*2.2+1.1;
       let hg=X.createRadialGradient(st.x,st.y,0,st.x,st.y,hr);
-      hg.addColorStop(0,'rgba(255,246,190,'+(0.30*st_tw*Math.min(1,st.sz))+')');
-      hg.addColorStop(0.45,'rgba(255,232,150,'+(0.10*st_tw)+')');
-      hg.addColorStop(1,'rgba(255,220,120,0)');
+      hg.addColorStop(0,'rgba('+rgb+','+(0.18*st_tw*Math.min(1,st.sz))+')');
+      hg.addColorStop(0.45,'rgba('+rgb+','+(0.055*st_tw)+')');
+      hg.addColorStop(1,'rgba('+rgb+',0)');
       X.fillStyle=hg; X.beginPath(); X.arc(st.x,st.y,hr,0,TAU); X.fill();
       X.restore();
     }
@@ -2855,8 +2953,10 @@ function frame(){
   updateTemple(tx,ty);
   updateGyres(px,py);
   updateStars(hx,hy,tx,ty);
+  updateCosmicStructures();
   growLoveSkirt(tx,ty);
 
+  drawCosmicStructures();
   drawStars();
   drawTemple(tx,ty);
   drawRefraction();
@@ -2919,6 +3019,7 @@ function resetWorld(){
   gyres.length=0; gyres.push(makeGyre(0,0,1,true));
   daughters.length=0; heart.sparks.length=0; heart.rings.length=0;heart.skirt.length=0;heart.shock=0;
   golds.length=0; ferments.length=0; stars.length=0; fallers.length=0;
+  cosmicStructures.length=0;cosmicSerial=0;
   starBursts.length=0;elementFragments.length=0;elementFlashes.length=0;seamBursts.length=0;embers.length=0;
   love.init=false; love.hitVx=0; love.hitVy=0; love.shock=0; love.stun=0; love.guard=0; tick=0;
   starstruck.heart=0;starstruck.love=0;starstruck.temple=0;starstruck.power=0;starstruck.at=null;
@@ -2937,7 +3038,7 @@ function snapshot(){
     gyre:gyres.indexOf(petrifying.G),goddess:embers.indexOf(petrifying.gd),t:petrifying.t
   }:null;
   return JSON.stringify({
-    schema:3,tick,seed:seedName,rngState,world:{w:W,h:H},
+    schema:4,tick,seed:seedName,rngState,world:{w:W,h:H},
     temple:{pts:temple.pts,nextAt:temple.nextAt,iceCount:temple.iceCount,shock:temple.shock},
     heart:{rings:heart.rings,sparks:heart.sparks,skirt:heart.skirt,shock:heart.shock},
     love:{x:love.x,y:love.y,init:love.init,gazeA:love.gazeA,gazeTarget:love.gazeTarget,
@@ -2946,6 +3047,7 @@ function snapshot(){
       age:g.age,life:g.life,petrify:g.petrify||0,orbiters:g.orbiters,out:g.out})),
     daughters:daughters,
     golds,ferments,stars,fallers,
+    cosmos:{structures:cosmicStructures,serial:cosmicSerial},
     embers:embers,
     skirtRain,petrifying:petrifySave,
     magentas,glints,
@@ -2992,7 +3094,9 @@ function migrateWorld(d){
   /* stars written before mass was a spectrum carry no sz worth trusting */
   if(Array.isArray(d.stars))for(const st of d.stars){
     if(typeof st.sz!=='number'||!isFinite(st.sz))st.sz=starSize();
+    st.sz=Math.min(TUNE.STAR_SZ_MAX,Math.max(TUNE.STAR_SZ_MIN,st.sz));
     if(typeof st.mass!=='number'||!isFinite(st.mass))st.mass=0.5+st.sz*0.9;
+    if(st.tone===undefined)st.tone=hash32('star-tone|'+Math.round(st.x||0)+'|'+Math.round(st.y||0))%STAR_TONES.length;
   }
   if(!Array.isArray(d.fallers))d.fallers=[];
   return d;
@@ -3031,6 +3135,10 @@ function restore(json){
     daughters.length=0;for(const h of (d.daughters||[]).slice(0,5))daughters.push({...h,vx:h.vx||0,vy:h.vy||0,skirt:h.skirt||[],shock:h.shock||0});
     golds.length=0;for(const g of d.golds||[])golds.push(g);
     ferments.length=0;for(const f of d.ferments||[])ferments.push(f);
+    cosmicStructures.length=0;
+    const cosmos=d.cosmos||{};
+    for(const s of cosmos.structures||[])cosmicStructures.push({...s,age:s.age||0});
+    cosmicSerial=Math.max(cosmos.serial||0,...cosmicStructures.map(s=>(s.id||0)+1));
     /* Legacy stars were fixed points pinned near a ceiling. Give them the
        motion they always should have had, without moving them. */
     stars.length=0;
