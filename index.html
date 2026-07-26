@@ -1103,27 +1103,9 @@ function updateGyres(px,py){
       const lx=Math.cos(o.a)*o.r,ly=Math.sin(o.a)*o.r;
       const nx=G.x+lx, ny=G.y+ly;
       if(o.fresh)o.trail.length=0;
-      /* Root-Silk Restraint: Quiet Silk records a local turning. Power itself
-         travels through the world, so its moving orbit must not be flattened
-         into a bright magenta scar across the persistent sky. */
-      if(!G.root&&!o.fresh&&!o.skipSilk){
-        const t=Math.max(0,(120*G.scale-o.r)/(113*G.scale));
-        /* Quiet Silk is the world-space circle left behind. Its original sparse
-           gate, rim suppression, colors and narrow width remain intact. */
-        const rimPinned=o.blessed>0.1 && o.r>135*G.scale;
-        const silkOpen=Math.sin(o.silkPhase)>0.82;
-        if(!rimPinned && silkOpen){
-          if(o.blessed>0.1)
-            SX.strokeStyle='rgba(160,255,200,'+(0.24*o.blessed)+')';
-          else{
-            const rr=Math.floor(lerp(180,255,o.hue)), bb=Math.floor(lerp(255,190,o.hue));
-            SX.strokeStyle='rgba('+rr+','+Math.floor(t*50)+','+bb+','+(0.10+t*0.28)+')';
-          }
-          SX.lineWidth=(0.45+t*1.35)*G.scale*o.silkWidth;
-          SX.lineCap='round';
-          SX.beginPath(); SX.moveTo(o.px,o.py); SX.lineTo(nx,ny); SX.stroke();
-        }
-      }
+      /* Vault Without Scars: turning is visible while it happens, but no gyre
+         writes a persistent purple seam into the sky. The remaining live trail
+         below is surface-time only and vanishes with its motion. */
       const depth=Math.max(0,(120*G.scale-o.r)/(113*G.scale));
       o.trail.push({x:lx,y:ly,depth,hue:o.hue,blessed:o.blessed||0});
       if(o.trail.length>36)o.trail.shift();

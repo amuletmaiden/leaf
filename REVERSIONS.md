@@ -184,6 +184,22 @@ Prevents the root gyre from drawing Quiet Silk into the persistent layer while i
 
 Revert phrase: `revert Root-Silk Restraint`
 
+## Clock Exactness
+
+**Files:** `leaf-clock-of-power.js`, `leaf-systems.json`
+
+Replaces the former 40-unit approximation with one real world step per whole unit of pace. At integer pace values, pace 500 now follows the same seeded ecological path as 500 pace-1 frames for the same world-time. Only the final step is painted, but high pace necessarily performs proportionally more CPU work.
+
+Revert phrase: `revert Clock Exactness`
+
+## Vault Without Scars
+
+**Files:** `index.html`, `leaf-systems.json`
+
+Withdraws Quiet Silk from every gyre. Turning remains visible through its live, short surface trail, while the persistent silk layer is allowed to fade clean instead of renewing purple cracks across the cosmic vault.
+
+Revert phrase: `revert Vault Without Scars`
+
 ## Round Horizon
 
 **Commit:** `edde7d24009b21fb99ae1fabc82e12e889b57249`

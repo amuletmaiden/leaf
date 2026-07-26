@@ -12,8 +12,8 @@
    frames, and save/load disagreed about the permitted range.
 
    Clock of Power keeps the public range 0.1–500. A requested pace above the
-   collision-safe step is divided into several hidden world steps. The last step
-   alone is painted to the display; persistent world-memory still receives the
+   ordinary rate advances through hidden unit world steps. The last step alone
+   is painted to the display; persistent world-memory still receives the
    passage. The requested pace is restored between frames, so saves and explicit
    inquiry see the true setting rather than an internal subdivision.
    ========================================================================== */
@@ -22,7 +22,10 @@
 
   const MIN_PACE = 0.1;
   const MAX_PACE = 500;
-  const MAX_STEP = 40;
+  /* Clock Exactness: one whole unit of world-time is never compressed into a
+     larger integrator step. This costs real work at high pace, but preserves
+     discrete contacts, tick-gates, seeded randomness, and ecological history. */
+  const MAX_STEP = 1;
   let requested = Number.isFinite(pace) ? pace : 1;
   let worldClock = Number.isFinite(tick) ? tick : 0;
   let currentStep = requested;
@@ -124,9 +127,15 @@
     inFrame = true;
     try {
       requested = normalize(requested) || 1;
-      const parts = requested > 1 ? Math.ceil(requested / MAX_STEP) : 1;
-      const stepPace = requested / parts;
-      for (let i = 0; i < parts; i++) oneStep(stepPace, document.hidden || i < parts - 1);
+      const whole = Math.floor(requested);
+      const remainder = requested - whole;
+      const parts = whole + (remainder > 1e-9 ? 1 : 0);
+      let step = 0;
+      for (let i = 0; i < whole; i++) {
+        step++;
+        oneStep(1, document.hidden || step < parts);
+      }
+      if (remainder > 1e-9) oneStep(remainder, document.hidden);
     } finally {
       pace = requested;
       currentStep = requested;
@@ -181,7 +190,10 @@
     set,
     get,
     step,
-    subdivisions() { return requested > 1 ? Math.ceil(requested / MAX_STEP) : 1; },
+    subdivisions() {
+      const whole = Math.floor(requested), remainder = requested - whole;
+      return whole + (remainder > 1e-9 ? 1 : 0);
+    },
     worldClock() { return worldClock; }
   };
 })();
