@@ -124,7 +124,7 @@
   });
   add({
     word: 'zettaitsune', aliases: ['zts', 'bride'],
-    kata: kata(['zet', K.green], ['tai', K.blue], ['tsune', K.green]),
+    kata: kata(['zet', K.green], ['tai', K.blue], ['tsu', K.green], ['ne', K.blue]),
     run() { summon('zettaitsune'); }
   });
   add({

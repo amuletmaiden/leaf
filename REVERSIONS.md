@@ -152,6 +152,30 @@ Spells Zettaitsune as the syllable-true GREEN · BLUE · GREEN sequence `zet / t
 
 Revert phrase: `revert Zettaitsune Trine`
 
+## Predator's Winnowing
+
+**Files:** `leaf-new-goddesses.js`, `leaf-systems.json`
+
+Lets Retrograde Hunger wake not only for a concentration of giant stars, but also for a crowded bright sky. It still selects the largest available light and withdraws after the field is thinned, so sparse ordinary starlight is left alone.
+
+Revert phrase: `revert Predator's Winnowing`
+
+## Zettaitsune Quatrain
+
+**Files:** `leaf-star-temperance.js`, `leaf-crown.js`, `leaf-systems.json`
+
+Supersedes the Trine in the visible readout and litany. Zettaitsune is again rendered as GREEN · BLUE · GREEN · BLUE: `zet / tai / tsu / ne`.
+
+Revert phrase: `revert Zettaitsune Quatrain`
+
+## Dark Core of Aggression
+
+**Files:** `index.html`, `leaf-systems.json`
+
+Sets a dark, dense HEART centre inside Aggression. Her green and magenta bodies remain active around it, while wound seams no longer resolve to pale white.
+
+Revert phrase: `revert Dark Core of Aggression`
+
 ## Round Horizon
 
 **Commit:** `edde7d24009b21fb99ae1fabc82e12e889b57249`

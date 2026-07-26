@@ -30,13 +30,19 @@ function trail(o,n){o.trail.push({x:o.x,y:o.y});if(o.trail.length>n)o.trail.shif
 function giants(){
   try{return stars.filter(s=>num(s.sz)>=1.72).sort((a,b)=>(num(b.sz)+num(b.mass)*.22)-(num(a.sz)+num(a.mass)*.22))}catch(_){return[]}
 }
-function pressure(){let q=0;for(const s of giants())q+=Math.max(0,num(s.sz)-1.35)*num(s.mass,1);return q}
+/* Predator's Winnowing: a crowded yellow field can call the Hunger as surely
+   as an exceptional giant. She still takes the most consequential lights first. */
+function brightStars(){
+  try{return stars.filter(s=>num(s.sz)>=1.12).sort((a,b)=>(num(b.sz)+num(b.mass)*.22)-(num(a.sz)+num(a.mass)*.22))}catch(_){return[]}
+}
+function pressure(){let q=0;for(const s of brightStars())q+=Math.max(0,num(s.sz)-.92)*num(s.mass,1);return q}
+function crowdedSky(){try{return brightStars().length>=6||stars.length>=26}catch(_){return false}}
 function spawnEater(s){
   eater.on=true;eater.age=0;eater.life=span(12000,21000);eater.dying=0;eater.turn=0;eater.eaten=0;eater.trail=[];
   const left=s.x>W/2;eater.x=left?-55:W+55;eater.y=cap(s.y+rand(-140,140),40,H-40);eater.vx=left?.15:-.15;eater.vy=0;
 }
 function eaterTarget(){
-  const g=giants();if(g.length)return g[0];
+  const bright=brightStars();if(bright.length)return bright[0];
   let b=null,v=-1;try{for(const s of stars){const q=num(s.sz)*1.4+num(s.mass,1)*.35;if(q>v){v=q;b=s}}}catch(_){}
   return b;
 }
@@ -52,13 +58,19 @@ function eat(s){
 }
 function updateEater(){
   const d=worldDt();if(eater.cool>0)eater.cool=Math.max(0,eater.cool-d);
-  if(!eater.on){const g=giants();if(eater.cool<=0&&g.length>=3&&pressure()>2.8&&temple.iceCount>=8&&every(3000,317)&&Math.random()<.52)spawnEater(g[0]);return}
+  if(!eater.on){
+    const bright=brightStars(),g=giants();
+    const summonedByGiant=g.length>=2&&pressure()>1.65;
+    const summonedByCrowd=crowdedSky()&&pressure()>2.15;
+    if(eater.cool<=0&&(summonedByGiant||summonedByCrowd)&&temple.iceCount>=8&&every(1800,317)&&Math.random()<.68)spawnEater(bright[0]||g[0]);
+    return;
+  }
   eater.age+=d;
   if(eater.dying){eater.dying-=d;if(eater.dying<=0){try{decompose(eater.x,eater.y,['red','pink','blue'],1.25)}catch(_){}eater.on=false;eater.cool=span(30000,52000);eater.turn=0;eater.trail=[]}return}
-  const s=eaterTarget();if(s){move(eater,s,.017,1.05);if(Math.hypot(s.x-eater.x,s.y-eater.y)<18+num(s.sz,1)*4.8)eat(s)}else{const t=pTemple();move(eater,{x:t[0],y:t[1]},.006,.65)}
+  const s=eaterTarget();if(s){move(eater,s,.021,1.22);if(Math.hypot(s.x-eater.x,s.y-eater.y)<20+num(s.sz,1)*5.2)eat(s)}else{const t=pTemple();move(eater,{x:t[0],y:t[1]},.006,.65)}
   trail(eater,34);
   while(eater.turn>=2.35){const n=iceAt(eater.x,eater.y,4);eater.turn-=n?2.35:.35;if(!n)break}
-  if(eater.age>eater.life||(eater.eaten&&pressure()<.75&&eater.turn<.8))eater.dying=span(420,620);
+  if(eater.age>eater.life||(eater.eaten&&!crowdedSky()&&pressure()<.72&&eater.turn<.8))eater.dying=span(420,620);
 }
 function drawEater(){
   if(!eater.on)return;const a=eater.dying?cap(eater.dying/520,0,1):Math.min(1,eater.age/160);

@@ -2080,8 +2080,8 @@ function updateAggressor(tx,ty){
     X.moveTo(c.x-ux*L*0.5,c.y-uy*L*0.5);
     X.lineTo(c.x+ux*L*0.5,c.y+uy*L*0.5);
     X.stroke();
-    /* the wound has an edge: a thin white core that closes first */
-    X.strokeStyle='rgba(255,240,235,'+(0.34*fade*fade*a)+')';
+    /* the wound has a dark red seam, never a pale centre */
+    X.strokeStyle='rgba(112,18,58,'+(0.48*fade*fade*a)+')';
     X.lineWidth=0.9;
     X.beginPath();
     X.moveTo(c.x-ux*L*0.34,c.y-uy*L*0.34);
@@ -2098,6 +2098,18 @@ function updateAggressor(tx,ty){
     tg.addColorStop(1,col+'0)');
     X.fillStyle=tg;X.beginPath();X.arc(ox,oy,26,0,TAU);X.fill();
   }
+  /* Dark Core of Aggression: Heart is the first term. Love and Power circle
+     a dense, unlit origin instead of bleaching her into a pale lamp. */
+  X.save();X.globalCompositeOperation='source-over';
+  let core=X.createRadialGradient(aggressor.x,aggressor.y,0,aggressor.x,aggressor.y,24);
+  core.addColorStop(0,'rgba(0,0,4,'+(0.94*a)+')');
+  core.addColorStop(0.42,'rgba(9,0,13,'+(0.88*a)+')');
+  core.addColorStop(0.72,'rgba(46,0,22,'+(0.44*a)+')');
+  core.addColorStop(1,'rgba(46,0,22,0)');
+  X.fillStyle=core;X.beginPath();X.arc(aggressor.x,aggressor.y,24,0,TAU);X.fill();
+  X.restore();X.globalCompositeOperation='lighter';
+  X.strokeStyle='rgba(185,20,52,'+(0.38*a)+')';X.lineWidth=0.8;
+  X.beginPath();X.arc(aggressor.x,aggressor.y,11+Math.sin(ph*1.4)*1.6,0,TAU);X.stroke();
   /* the blades: her regard is not a beam but a set of cuts */
   for(let k=0;k<3;k++){
     const an=ph*1.7+k*TAU/3, len=44+18*Math.sin(tick*0.08+k);

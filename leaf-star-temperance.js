@@ -6,10 +6,10 @@
    rarer and slightly less enormous. Existing stars are not rewritten; the
    changed law governs new stars.
 
-   ZETTAITSUNE TRINE
-   Official change name: Zettaitsune Trine
+   ZETTAITSUNE QUATRAIN
+   Official change name: Zettaitsune Quatrain
 
-   Her spoken name is GREEN · BLUE · GREEN: zet / tai / tsune.
+   Her visible name is GREEN · BLUE · GREEN · BLUE: zet / tai / tsu / ne.
    ========================================================================== */
 (function () {
   'use strict';
@@ -26,12 +26,13 @@
       ARRIVAL_NAMES.bride.label =
         '<span style="color:#00ff00">zet</span>' +
         '<span style="color:#00c8ff">tai</span>' +
-        '<span style="color:#00ff00">tsune</span>';
+        '<span style="color:#00ff00">tsu</span>' +
+        '<span style="color:#00c8ff">ne</span>';
     }
   } catch (_) {}
 
   globalThis.LEAF_STAR_TEMPERANCE = {
     officialName: 'Star Temperance',
-    zettaitsuneName: 'Zettaitsune Trine'
+    zettaitsuneName: 'Zettaitsune Quatrain'
   };
 })();
