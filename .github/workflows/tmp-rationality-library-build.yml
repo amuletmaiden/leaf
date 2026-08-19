@@ -7,55 +7,31 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - uses: pandoc/actions/setup@v1
-      - run: git clone --depth 1 --branch master_lite https://github.com/jrincayc/rationality-ai-zombies.git src
-      - name: Normalize 2015-derived TeX for Pandoc
+      - name: Download published EPUB
         run: |
           python - <<'PY'
-          from pathlib import Path
-          def matching_close(s, start):
-              depth = 0
-              for i in range(start, len(s)):
-                  if s[i] == '{' and (i == 0 or s[i-1] != '\\'):
-                      depth += 1
-                  elif s[i] == '}' and (i == 0 or s[i-1] != '\\'):
-                      depth -= 1
-                      if depth == 0:
-                          return i
-              raise RuntimeError('unbalanced group')
-          for p in Path('src').glob('*.tex'):
-              s = p.read_text(encoding='utf-8')
-              marker = r'\footnote{Edit 2018:'
-              while marker in s:
-                  start = s.index(marker)
-                  brace = s.index('{', start)
-                  end = matching_close(s, brace)
-                  s = s[:start] + s[end+1:]
-              # Pandoc's LaTeX reader dislikes arbitrary paragraph-spanning
-              # TeX groups emitted by the EPUB->TeX conversion. Remove only
-              # groups whose opening brace is the sole token on its line,
-              # together with that exact brace's matching closer.
-              while True:
-                  lines = s.splitlines(keepends=True)
-                  pos = 0
-                  opener = None
-                  for line in lines:
-                      if line.strip() == '{':
-                          opener = pos + line.index('{')
-                          break
-                      pos += len(line)
-                  if opener is None:
-                      break
-                  closer = matching_close(s, opener)
-                  s = s[:closer] + s[closer+1:]
-                  s = s[:opener] + s[opener+1:]
-              p.write_text(s, encoding='utf-8')
+          import html, re, urllib.parse, urllib.request, sys
+          page = 'https://intelligence.org/rationality-ai-zombies/'
+          req = urllib.request.Request(page, headers={'User-Agent':'Mozilla/5.0'})
+          data = urllib.request.urlopen(req, timeout=30).read().decode('utf-8','replace')
+          hrefs = [html.unescape(x) for x in re.findall(r'href=["\']([^"\']+)["\']', data, re.I)]
+          links = [urllib.parse.urljoin(page, x) for x in hrefs]
+          epub = [x for x in links if '.epub' in x.lower()]
+          print('EPUB candidates:', *epub, sep='\n')
+          if not epub:
+              print('Relevant download links:')
+              for x in links:
+                  if any(k in x.lower() for k in ('gumroad','ebook','download','rationality')):
+                      print(x)
+              sys.exit('No direct EPUB link found')
+          out = 'Rationality From AI to Zombies.epub'
+          req = urllib.request.Request(epub[0], headers={'User-Agent':'Mozilla/5.0'})
+          with urllib.request.urlopen(req, timeout=60) as r, open(out,'wb') as f:
+              f.write(r.read())
           PY
-      - name: Build EPUB
-        run: |
-          pandoc src/front.tex src/map_and_territory.tex src/change_mind.tex src/machine_in_ghost.tex src/mere_reality.tex src/mere_goodness.tex src/becoming_stronger.tex --from=latex --to=epub3 --resource-path=src --metadata='title:Rationality: From AI to Zombies' --metadata='author:Eliezer Yudkowsky' --metadata='date:2015' --toc -o 'Rationality From AI to Zombies.epub'
+          test $(stat -c%s 'Rationality From AI to Zombies.epub') -gt 100000
           unzip -t 'Rationality From AI to Zombies.epub'
       - uses: actions/upload-artifact@v4
         with:
