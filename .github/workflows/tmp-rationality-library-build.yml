@@ -11,6 +11,31 @@ jobs:
     steps:
       - uses: pandoc/actions/setup@v1
       - run: git clone --depth 1 --branch master_lite https://github.com/jrincayc/rationality-ai-zombies.git src
+      - name: Remove post-2015 editorial footnotes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          marker = r'\footnote{Edit 2018:'
+          for p in Path('src').glob('*.tex'):
+              s = p.read_text(encoding='utf-8')
+              while marker in s:
+                  start = s.index(marker)
+                  brace = s.index('{', start)
+                  depth = 0
+                  end = None
+                  for i in range(brace, len(s)):
+                      if s[i] == '{' and (i == 0 or s[i-1] != '\\'):
+                          depth += 1
+                      elif s[i] == '}' and (i == 0 or s[i-1] != '\\'):
+                          depth -= 1
+                          if depth == 0:
+                              end = i + 1
+                              break
+                  if end is None:
+                      raise RuntimeError(f'unbalanced 2018 footnote in {p}')
+                  s = s[:start] + s[end:]
+              p.write_text(s, encoding='utf-8')
+          PY
       - name: Build EPUB
         run: |
           pandoc src/front.tex src/map_and_territory.tex src/change_mind.tex src/machine_in_ghost.tex src/mere_reality.tex src/mere_goodness.tex src/becoming_stronger.tex --from=latex --to=epub3 --resource-path=src --metadata='title:Rationality: From AI to Zombies' --metadata='author:Eliezer Yudkowsky' --metadata='date:2015' --toc -o 'Rationality From AI to Zombies.epub'
