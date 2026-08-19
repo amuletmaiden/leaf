@@ -1,0 +1,22 @@
+name: Temporary Rationality Library Build
+on:
+  pull_request:
+    paths: ['.github/rationality-build-trigger']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y pandoc
+      - run: git clone --depth 1 --branch master_lite https://github.com/jrincayc/rationality-ai-zombies.git src
+      - name: Build EPUB
+        run: |
+          pandoc src/front.tex src/map_and_territory.tex src/change_mind.tex src/machine_in_ghost.tex src/mere_reality.tex src/mere_goodness.tex src/becoming_stronger.tex --from=latex --to=epub3 --resource-path=src --metadata='title:Rationality: From AI to Zombies' --metadata='author:Eliezer Yudkowsky' --metadata='date:2015' --toc -o 'Rationality From AI to Zombies.epub'
+          unzip -t 'Rationality From AI to Zombies.epub'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rationality-library-epub
+          path: Rationality From AI to Zombies.epub
+          retention-days: 1
