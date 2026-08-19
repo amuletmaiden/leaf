@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: pandoc/actions/setup@v1
       - run: git clone --depth 1 --branch master_lite https://github.com/jrincayc/rationality-ai-zombies.git src
-      - name: Remove post-2015 editorial footnotes
+      - name: Normalize 2015-derived TeX for Pandoc
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -34,6 +34,7 @@ jobs:
                   if end is None:
                       raise RuntimeError(f'unbalanced 2018 footnote in {p}')
                   s = s[:start] + s[end:]
+              s = '\n'.join(line for line in s.splitlines() if line.strip() not in {'{','}'}) + '\n'
               p.write_text(s, encoding='utf-8')
           PY
       - name: Build EPUB
