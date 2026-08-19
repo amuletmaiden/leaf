@@ -15,26 +15,42 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          marker = r'\footnote{Edit 2018:'
+          def matching_close(s, start):
+              depth = 0
+              for i in range(start, len(s)):
+                  if s[i] == '{' and (i == 0 or s[i-1] != '\\'):
+                      depth += 1
+                  elif s[i] == '}' and (i == 0 or s[i-1] != '\\'):
+                      depth -= 1
+                      if depth == 0:
+                          return i
+              raise RuntimeError('unbalanced group')
           for p in Path('src').glob('*.tex'):
               s = p.read_text(encoding='utf-8')
+              marker = r'\footnote{Edit 2018:'
               while marker in s:
                   start = s.index(marker)
                   brace = s.index('{', start)
-                  depth = 0
-                  end = None
-                  for i in range(brace, len(s)):
-                      if s[i] == '{' and (i == 0 or s[i-1] != '\\'):
-                          depth += 1
-                      elif s[i] == '}' and (i == 0 or s[i-1] != '\\'):
-                          depth -= 1
-                          if depth == 0:
-                              end = i + 1
-                              break
-                  if end is None:
-                      raise RuntimeError(f'unbalanced 2018 footnote in {p}')
-                  s = s[:start] + s[end:]
-              s = '\n'.join(line for line in s.splitlines() if line.strip() not in {'{','}'}) + '\n'
+                  end = matching_close(s, brace)
+                  s = s[:start] + s[end+1:]
+              # Pandoc's LaTeX reader dislikes arbitrary paragraph-spanning
+              # TeX groups emitted by the EPUB->TeX conversion. Remove only
+              # groups whose opening brace is the sole token on its line,
+              # together with that exact brace's matching closer.
+              while True:
+                  lines = s.splitlines(keepends=True)
+                  pos = 0
+                  opener = None
+                  for line in lines:
+                      if line.strip() == '{':
+                          opener = pos + line.index('{')
+                          break
+                      pos += len(line)
+                  if opener is None:
+                      break
+                  closer = matching_close(s, opener)
+                  s = s[:closer] + s[closer+1:]
+                  s = s[:opener] + s[opener+1:]
               p.write_text(s, encoding='utf-8')
           PY
       - name: Build EPUB
