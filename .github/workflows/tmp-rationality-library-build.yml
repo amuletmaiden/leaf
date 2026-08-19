@@ -43,10 +43,12 @@ jobs:
                   pos += len(line)
               for opener in reversed(openers):
                   closer = matching_close(s, opener)
-                  if closer is None:
-                      continue
-                  s = s[:closer] + s[closer+1:]
+                  if closer is not None:
+                      s = s[:closer] + s[closer+1:]
                   s = s[:opener] + s[opener+1:]
+              # Any brace that is still the sole token on a line is leftover
+              # conversion scaffolding rather than a command argument.
+              s = '\n'.join('' if line.strip() in {'{','}'} else line for line in s.splitlines()) + '\n'
               p.write_text(s, encoding='utf-8')
           PY
       - name: Build EPUB
